@@ -42,7 +42,7 @@ class TransactionVerifier
         ?string $trxId = null
     ): VerificationResult {
         try {
-            $response = $this->apiClient->verifyTransaction(
+            $response = $this->apiClient->pollTransaction(
                 $orderId,
                 $expectedAmount,
                 $expectedMethod,
@@ -133,14 +133,14 @@ class TransactionVerifier
         $trxId = $response['trx_id'] ?? null;
         $receivedAmount = (float) ($response['amount'] ?? 0);
         $receivedMethod = strtolower($response['payment_method'] ?? '');
-        $receivedStoreId = (int) ($response['store_id'] ?? 0);
-        $expectedStoreId = $this->apiClient->getStoreId();
+        $receivedStoreSlug = $response['store_slug'] ?? '';
+        $expectedStoreSlug = $this->apiClient->getStoreSlug();
 
         // 1. Validate store scope isolation (CRITICAL SECURITY CHECK)
-        if ($expectedStoreId !== null && $receivedStoreId !== $expectedStoreId) {
+        if ($expectedStoreSlug !== null && $receivedStoreSlug !== $expectedStoreSlug) {
             return VerificationResult::failed(
                 'STORE_MISMATCH',
-                "Transaction belongs to store {$receivedStoreId}, expected {$expectedStoreId}"
+                "Transaction belongs to store {$receivedStoreSlug}, expected {$expectedStoreSlug}"
             );
         }
 
@@ -165,7 +165,7 @@ class TransactionVerifier
             $trxId,
             $receivedAmount,
             $receivedMethod,
-            $receivedStoreId
+            $receivedStoreSlug
         );
     }
 

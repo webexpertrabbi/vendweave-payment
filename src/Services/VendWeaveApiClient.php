@@ -14,6 +14,11 @@ use VendWeave\Gateway\Exceptions\InvalidCredentialsException;
  * 
  * This service handles all direct API communication with the POS system.
  * It manages authentication headers, request/response cycles, and error handling.
+ * 
+ * API Endpoints:
+ * - POST /api/v1/woocommerce/poll-transaction
+ * - POST /api/v1/woocommerce/verify-transaction
+ * - POST /api/stores/{store_slug}/sms-receiver
  */
 class VendWeaveApiClient
 {
@@ -21,18 +26,18 @@ class VendWeaveApiClient
     private string $endpoint;
     private ?string $apiKey;
     private ?string $apiSecret;
-    private ?int $storeId;
+    private ?string $storeSlug;
 
     public function __construct(
         string $endpoint,
         ?string $apiKey,
         ?string $apiSecret,
-        ?int $storeId
+        ?string $storeSlug
     ) {
         $this->endpoint = rtrim($endpoint, '/');
         $this->apiKey = $apiKey;
         $this->apiSecret = $apiSecret;
-        $this->storeId = $storeId;
+        $this->storeSlug = $storeSlug;
 
         $this->client = new Client([
             'base_uri' => $this->endpoint,
@@ -43,7 +48,8 @@ class VendWeaveApiClient
     }
 
     /**
-     * Verify a transaction against the POS API.
+     * Poll for transaction status from POS.
+     * This is the primary polling endpoint for verification page.
      *
      * @param string $orderId
      * @param float $amount
@@ -53,7 +59,7 @@ class VendWeaveApiClient
      * @throws ApiConnectionException
      * @throws InvalidCredentialsException
      */
-    public function verifyTransaction(
+    public function pollTransaction(
         string $orderId,
         float $amount,
         string $paymentMethod,
@@ -62,6 +68,7 @@ class VendWeaveApiClient
         $this->validateCredentials();
 
         $params = [
+            'store_slug' => $this->storeSlug,
             'order_id' => $orderId,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
@@ -71,15 +78,46 @@ class VendWeaveApiClient
             $params['trx_id'] = $trxId;
         }
 
-        return $this->request('GET', '/transactions/verify', $params);
+        return $this->request('POST', '/api/v1/woocommerce/poll-transaction', $params);
     }
 
     /**
-     * Get the configured store ID.
+     * Verify a transaction against the POS API.
+     * Used for final transaction verification with TRX ID.
+     *
+     * @param string $orderId
+     * @param float $amount
+     * @param string $paymentMethod
+     * @param string $trxId
+     * @return array Raw API response data
+     * @throws ApiConnectionException
+     * @throws InvalidCredentialsException
      */
-    public function getStoreId(): ?int
+    public function verifyTransaction(
+        string $orderId,
+        float $amount,
+        string $paymentMethod,
+        string $trxId
+    ): array {
+        $this->validateCredentials();
+
+        $params = [
+            'store_slug' => $this->storeSlug,
+            'order_id' => $orderId,
+            'amount' => $amount,
+            'payment_method' => $paymentMethod,
+            'trx_id' => $trxId,
+        ];
+
+        return $this->request('POST', '/api/v1/woocommerce/verify-transaction', $params);
+    }
+
+    /**
+     * Get the configured store slug.
+     */
+    public function getStoreSlug(): ?string
     {
-        return $this->storeId;
+        return $this->storeSlug;
     }
 
     /**
@@ -107,6 +145,7 @@ class VendWeaveApiClient
         $this->log('info', 'VendWeave API Request', [
             'method' => $method,
             'path' => $path,
+            'store_slug' => $this->storeSlug,
             'params' => $this->sanitizeForLog($params),
         ]);
 
@@ -180,8 +219,8 @@ class VendWeaveApiClient
             throw new InvalidCredentialsException('VENDWEAVE_API_SECRET is not configured');
         }
 
-        if (empty($this->storeId)) {
-            throw new InvalidCredentialsException('VENDWEAVE_STORE_ID is not configured');
+        if (empty($this->storeSlug)) {
+            throw new InvalidCredentialsException('VENDWEAVE_STORE_SLUG is not configured');
         }
     }
 

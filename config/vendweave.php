@@ -19,27 +19,25 @@ return [
     | API Endpoint
     |--------------------------------------------------------------------------
     |
-    | The VendWeave POS API endpoint. Use the sandbox endpoint for development
-    | and testing, and production endpoint for live transactions.
+    | The VendWeave POS API endpoint.
     |
-    | Sandbox: https://sandbox.pos.vendweave.com/api
-    | Production: https://pos.vendweave.com/api
+    | Production: https://vendweave.com/api
     |
     */
 
-    'endpoint' => env('VENDWEAVE_API_ENDPOINT', 'https://pos.vendweave.com/api'),
+    'endpoint' => env('VENDWEAVE_API_ENDPOINT', 'https://vendweave.com/api'),
 
     /*
     |--------------------------------------------------------------------------
     | Store Configuration
     |--------------------------------------------------------------------------
     |
-    | Store ID for store scope isolation. Every transaction verification
-    | will validate that the store_id matches this configured value.
+    | Store slug for store scope isolation. Every transaction verification
+    | will include the store_slug in requests. Use your store's unique slug.
     |
     */
 
-    'store_id' => env('VENDWEAVE_STORE_ID'),
+    'store_slug' => env('VENDWEAVE_STORE_SLUG'),
 
     /*
     |--------------------------------------------------------------------------

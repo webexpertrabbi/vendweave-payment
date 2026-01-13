@@ -28,7 +28,7 @@ class VendWeaveServiceProvider extends ServiceProvider
                 config('vendweave.endpoint'),
                 config('vendweave.api_key'),
                 config('vendweave.api_secret'),
-                config('vendweave.store_id')
+                config('vendweave.store_slug')
             );
         });
 

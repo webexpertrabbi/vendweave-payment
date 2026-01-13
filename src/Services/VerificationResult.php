@@ -18,7 +18,7 @@ final class VerificationResult
         private readonly ?string $trxId,
         private readonly ?float $amount,
         private readonly ?string $paymentMethod,
-        private readonly ?int $storeId,
+        private readonly ?string $storeSlug,
         private readonly ?string $errorCode,
         private readonly ?string $errorMessage
     ) {}
@@ -30,14 +30,14 @@ final class VerificationResult
         string $trxId,
         float $amount,
         string $paymentMethod,
-        int $storeId
+        string $storeSlug
     ): self {
         return new self(
             self::STATUS_CONFIRMED,
             $trxId,
             $amount,
             $paymentMethod,
-            $storeId,
+            $storeSlug,
             null,
             null
         );
@@ -127,9 +127,9 @@ final class VerificationResult
         return $this->paymentMethod;
     }
 
-    public function getStoreId(): ?int
+    public function getStoreSlug(): ?string
     {
-        return $this->storeId;
+        return $this->storeSlug;
     }
 
     public function getErrorCode(): ?string

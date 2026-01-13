@@ -1,8 +1,16 @@
 # VendWeave POS Payment Verification API
 
+## Base URL
+
+```
+https://vendweave.com/api
+```
+
+---
+
 ## Authentication
 
-Headers:
+All requests must include:
 
 ```
 Authorization: Bearer {API_KEY}
@@ -11,23 +19,43 @@ X-Store-Secret: {API_SECRET}
 
 ---
 
-## Verify Transaction Endpoint
+## Endpoints
+
+### Poll Transaction
+
+Used for auto-polling from verification page.
 
 ```
-GET /api/transactions/verify
+POST /api/v1/woocommerce/poll-transaction
+```
+
+### Verify Transaction
+
+Used for manual transaction verification with TRX ID.
+
+```
+POST /api/v1/woocommerce/verify-transaction
+```
+
+### SMS Receiver
+
+Receives SMS forwarded from store device.
+
+```
+POST /api/stores/{store_slug}/sms-receiver
 ```
 
 ---
 
 ## Request Parameters
 
-| Field          | Type    | Required |
-| -------------- | ------- | -------- |
-| order_id       | string  | Yes      |
-| trx_id         | string  | Optional |
-| payment_method | string  | Yes      |
-| amount         | decimal | Yes      |
-| store_id       | integer | Yes      |
+| Field          | Type    | Required | Description                 |
+| -------------- | ------- | -------- | --------------------------- |
+| store_slug     | string  | Yes      | Unique store identifier     |
+| order_id       | string  | Yes      | Order ID from Laravel       |
+| trx_id         | string  | Optional | Transaction ID (for verify) |
+| payment_method | string  | Yes      | bkash/nagad/rocket/upay     |
+| amount         | decimal | Yes      | Exact payment amount        |
 
 ---
 
@@ -39,7 +67,7 @@ GET /api/transactions/verify
   "trx_id": "BKA123XYZ",
   "amount": 960.0,
   "payment_method": "bkash",
-  "store_id": 5
+  "store_slug": "my-store"
 }
 ```
 
@@ -57,10 +85,22 @@ GET /api/transactions/verify
 
 ---
 
+## Store Identity
+
+> ⚠️ **Important**: Store identity uses `store_slug` (string), never numeric ID.
+
+Example store slugs:
+
+- `my-electronics-shop`
+- `fashion-hub-bd`
+- `grocery-mart`
+
+---
+
 ## Validation Rules
 
 - Amount অবশ্যই exact match করবে
-- Store ID match না হলে reject
+- Store slug match না হলে reject
 - Method mismatch হলে reject
 - Used transaction পুনরায় ব্যবহার করা যাবে না
 - Expired transaction invalid

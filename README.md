@@ -55,14 +55,8 @@ php artisan vendor:publish --tag=vendweave-config
 ```env
 VENDWEAVE_API_KEY=your_api_key
 VENDWEAVE_API_SECRET=your_api_secret
-VENDWEAVE_STORE_ID=your_store_id
-VENDWEAVE_API_ENDPOINT=https://pos.vendweave.com/api
-```
-
-Sandbox:
-
-```env
-VENDWEAVE_API_ENDPOINT=https://sandbox.pos.vendweave.com/api
+VENDWEAVE_STORE_SLUG=your_store_slug
+VENDWEAVE_API_ENDPOINT=https://vendweave.com/api
 ```
 
 ---
