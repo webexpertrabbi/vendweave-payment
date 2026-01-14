@@ -264,6 +264,7 @@ return [
         'order_id' => ['wc_order_id', 'order_id', 'order_no', 'invoice_id'],
         'amount' => ['expected_amount', 'amount', 'total', 'grand_total'],
         'store_slug' => ['store_slug', 'store_id', 'shop_slug'],
+        'payment_method' => ['payment_method', 'method', 'gateway', 'payment_type', 'pay_via'],
     ],
 
     /*

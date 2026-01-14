@@ -166,7 +166,14 @@ class TransactionVerifier
         }
 
         // 3. Validate payment method match
-        if (strtolower($expectedMethod) !== $receivedMethod) {
+        if (empty($receivedMethod)) {
+             Log::warning('[VendWeave] Payment method missing in response during verification. Allowing due to strict amount match.', [
+                'expected' => $expectedMethod,
+                'received' => $receivedMethod,
+                'trx_id' => $trxId
+             ]);
+             // Graceful degradation: assume it matches
+        } elseif (strtolower($expectedMethod) !== $receivedMethod) {
             return VerificationResult::failed(
                 'METHOD_MISMATCH',
                 "Payment method mismatch: expected {$expectedMethod}, received {$receivedMethod}"
