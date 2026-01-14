@@ -119,10 +119,26 @@ return [
     */
 
     'payment_methods' => [
-        'bkash',
-        'nagad',
-        'rocket',
-        'upay',
+        'bkash' => [
+            'number' => env('VENDWEAVE_BKASH_NUMBER', '01XXXXXXXXX'),
+            'type' => 'personal', // personal or merchant
+            'instruction' => 'Send money to this Bkash Personal Number using Send Money option.',
+        ],
+        'nagad' => [
+            'number' => env('VENDWEAVE_NAGAD_NUMBER', '01XXXXXXXXX'),
+            'type' => 'personal',
+            'instruction' => 'Send money to this Nagad Personal Number using Send Money option.',
+        ],
+        'rocket' => [
+            'number' => env('VENDWEAVE_ROCKET_NUMBER', '01XXXXXXXXX'),
+            'type' => 'personal',
+            'instruction' => 'Send money to this Rocket Personal Number using Send Money option.',
+        ],
+        'upay' => [
+            'number' => env('VENDWEAVE_UPAY_NUMBER', '01XXXXXXXXX'),
+            'type' => 'personal',
+            'instruction' => 'Send money to this Upay Personal Number using Send Money option.',
+        ],
     ],
 
     /*

@@ -52,12 +52,16 @@ class PaymentManager implements PaymentGatewayInterface
      */
     public function getPaymentMethods(): array
     {
-        return config('vendweave.payment_methods', [
-            'bkash',
-            'nagad',
-            'rocket',
-            'upay',
+        $methods = config('vendweave.payment_methods', [
+            'bkash', 'nagad', 'rocket', 'upay'
         ]);
+
+        // If config is associative (keyed by method name), return keys
+        if (array_keys($methods) !== range(0, count($methods) - 1)) {
+            return array_keys($methods);
+        }
+
+        return $methods;
     }
 
     /**
@@ -68,6 +72,7 @@ class PaymentManager implements PaymentGatewayInterface
      */
     public function isValidPaymentMethod(string $method): bool
     {
+        // Handle case where method might be passed as "bkash" but keys are "bkash"
         return in_array(strtolower($method), $this->getPaymentMethods());
     }
 
@@ -85,31 +90,49 @@ class PaymentManager implements PaymentGatewayInterface
     /**
      * Get payment method display information.
      *
-     * @return array<string, array{name: string, color: string}>
+     * @return array<string, array>
      */
     public function getPaymentMethodsInfo(): array
     {
-        return [
+        $defaults = [
             'bkash' => [
                 'name' => 'bKash',
                 'color' => '#E2136E',
-                'instructions' => 'Send money to our bKash merchant number',
+                'logo' => 'https://raw.githubusercontent.com/webexpertrabbi/vendweave-assets/main/bkash.png',
             ],
             'nagad' => [
                 'name' => 'Nagad',
                 'color' => '#F6A623',
-                'instructions' => 'Send money to our Nagad merchant number',
+                'logo' => 'https://raw.githubusercontent.com/webexpertrabbi/vendweave-assets/main/nagad.png',
             ],
             'rocket' => [
                 'name' => 'Rocket',
                 'color' => '#8E44AD',
-                'instructions' => 'Send money to our Rocket merchant number',
+                'logo' => 'https://raw.githubusercontent.com/webexpertrabbi/vendweave-assets/main/rocket.png',
             ],
             'upay' => [
                 'name' => 'Upay',
                 'color' => '#00A651',
-                'instructions' => 'Send money to our Upay merchant number',
+                'logo' => 'https://raw.githubusercontent.com/webexpertrabbi/vendweave-assets/main/upay.png',
             ],
         ];
+
+        $configMethods = config('vendweave.payment_methods', []);
+        
+        // Return structured info merging defaults with config
+        $info = [];
+        foreach ($this->getPaymentMethods() as $method) {
+            $base = $defaults[$method] ?? ['name' => ucfirst($method), 'color' => '#333333'];
+            $config = $configMethods[$method] ?? [];
+            
+            // If config is just a list of strings
+            if (!is_array($config)) {
+                $config = [];
+            }
+
+            $info[$method] = array_merge($base, $config);
+        }
+
+        return $info;
     }
 }

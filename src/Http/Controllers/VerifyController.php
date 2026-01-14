@@ -40,6 +40,16 @@ class VerifyController extends BaseController
             );
         }
 
+        // Initialize or retrieve start time for persistent timer
+        $timerSessionKey = "vendweave_timer_{$order}";
+        if (!session()->has($timerSessionKey)) {
+             session([$timerSessionKey => now()]);
+        }
+        $startTime = session($timerSessionKey);
+        $timeoutDuration = config('vendweave.polling.timeout_seconds', 300);
+        $elapsed = now()->diffInSeconds($startTime);
+        $timeRemaining = max(0, $timeoutDuration - $elapsed);
+
         return view('vendweave::verify', [
             'orderId' => $order,
             'amount' => $orderData['amount'],
@@ -49,7 +59,7 @@ class VerifyController extends BaseController
             'cancelUrl' => route('vendweave.cancelled', ['order' => $order]),
             'pollingInterval' => config('vendweave.polling.interval_ms', 2500),
             'maxAttempts' => config('vendweave.polling.max_attempts', 120),
-            'timeout' => config('vendweave.polling.timeout_seconds', 300),
+            'timeout' => $timeRemaining, // Dynamic remaining time
         ]);
     }
 

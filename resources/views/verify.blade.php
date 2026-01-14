@@ -372,12 +372,22 @@
                 </div>
                 
                 <div class="instructions">
-                    <h3>How to Pay</h3>
-                    <ol>
-                        <li>Open your {{ ucfirst($paymentMethod) }} app</li>
-                        <li>Send exactly ৳{{ number_format($amount, 2) }}</li>
-                        <li>Wait for auto-verify or enter TRX ID</li>
-                    </ol>
+                    @if(isset($paymentMethodInfo['number']))
+                        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px dashed var(--border);">
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Send Money To ({{ ucfirst($paymentMethodInfo['type'] ?? 'Personal') }})</div>
+                            <div style="font-size: 18px; font-weight: 700; color: var(--primary); letter-spacing: 1px; font-family: monospace;">{{ $paymentMethodInfo['number'] }}</div>
+                        </div>
+                        <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;">
+                            {{ $paymentMethodInfo['instruction'] ?? 'Send exact amount to the number above.' }}
+                        </div>
+                    @else
+                        <h3>How to Pay</h3>
+                        <ol>
+                            <li>Open your {{ ucfirst($paymentMethod) }} app</li>
+                            <li>Send exactly ৳{{ number_format($amount, 2) }}</li>
+                            <li>Wait for auto-verify or enter TRX ID</li>
+                        </ol>
+                    @endif
                 </div>
             </div>
             
@@ -414,7 +424,8 @@
                 cancelUrl: @json($cancelUrl),
                 pollingInterval: {{ $pollingInterval }},
                 maxAttempts: {{ $maxAttempts }},
-                timeout: {{ $timeout }}
+                timeout: {{ $timeout }}, // Remaining time
+                totalDuration: {{ config('vendweave.polling.timeout_seconds', 300) }} // Full duration for retry
             };
             
             // State

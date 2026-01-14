@@ -366,7 +366,28 @@ php artisan config:clear
 
 ---
 
-## 🎯 Production Deployment Checklist
+### ধাপ ১১: Payment Numbers & Instructions কনফিগার করুন
+
+`config/vendweave.php` ফাইলে `payment_methods` সেকশনে আপনার নাম্বার এবং ইন্সট্রাকশন সেট করুন:
+
+```php
+'payment_methods' => [
+    'bkash' => [
+        'number' => env('VENDWEAVE_BKASH_NUMBER', '01XXXXXXXXX'),
+        'type' => 'personal',
+        'instruction' => 'এই নাম্বারে টাকা পাঠিয়ে ভেরিফাই করুন।',
+    ],
+    // ... অন্যান্য মেথড
+],
+```
+
+এবং `.env` ফাইলে নাম্বারগুলো সেট করুন:
+
+```env
+VENDWEAVE_BKASH_NUMBER=01700000000
+VENDWEAVE_NAGAD_NUMBER=01600000000
+VENDWEAVE_U_PAY_NUMBER=01800000000
+```
 
 Production এ deploy করার আগে:
 

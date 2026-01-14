@@ -94,6 +94,15 @@ class VendWeaveApiClient
 
         $response = $this->request('POST', '/api/v1/woocommerce/poll-transaction', $params);
         
+        // DEBUG LOGGING START
+        $this->log('info', 'Poll Transaction Debug', [
+            'order_id' => $orderId,
+            'expected_method' => $paymentMethod,
+            'raw_response_payment_method' => $response['payment_method'] ?? 'MISSING',
+            'raw_response' => $response
+        ]);
+        // DEBUG LOGGING END
+
         // Normalize response structure (List → Object, auto-detect fields)
         $normalized = $this->normalizeResponse($response);
         
@@ -101,8 +110,13 @@ class VendWeaveApiClient
         if (empty($normalized['payment_method'])) {
             $this->log('warning', 'API response missing payment_method, injecting expected value', [
                 'expected_payment_method' => $paymentMethod,
+                'normalized_before' => $normalized
             ]);
             $normalized['payment_method'] = $paymentMethod;
+        } else {
+             $this->log('info', 'Payment method found in API response', [
+                'method' => $normalized['payment_method']
+            ]);
         }
         
         return $normalized;
