@@ -49,13 +49,24 @@ POST /api/stores/{store_slug}/sms-receiver
 
 ## Request Parameters
 
-| Field          | Type    | Required | Description                 |
-| -------------- | ------- | -------- | --------------------------- |
-| store_slug     | string  | Yes      | Unique store identifier     |
-| order_id       | string  | Yes      | Order ID from Laravel       |
-| trx_id         | string  | Optional | Transaction ID (for verify) |
-| payment_method | string  | Yes      | bkash/nagad/rocket/upay     |
-| amount         | decimal | Yes      | Exact payment amount        |
+> 🤖 **Note**: The SDK automatically maps your parameters to these required names.
+
+| Field           | Type    | Required | Description                                |
+| --------------- | ------- | -------- | ------------------------------------------ |
+| store_slug      | string  | Yes      | Unique store identifier                    |
+| wc_order_id     | string  | Yes      | Order ID (SDK auto-maps from order_id)     |
+| expected_amount | decimal | Yes      | Payment amount (SDK auto-maps from amount) |
+| payment_method  | string  | Yes      | bkash/nagad/rocket/upay                    |
+| trx_id          | string  | Optional | Transaction ID (for verify endpoint)       |
+
+### SDK Auto-Mapping
+
+Your code can use standard field names:
+
+- `order_id` → SDK maps to `wc_order_id`
+- `amount` → SDK maps to `expected_amount`
+
+No code changes required!
 
 ---
 
@@ -88,6 +99,13 @@ POST /api/stores/{store_slug}/sms-receiver
 ## Store Identity
 
 > ⚠️ **Important**: Store identity uses `store_slug` (string), never numeric ID.
+
+### API Response Handling
+
+The POS API **should** return `store_slug` in responses, but the SDK gracefully handles missing store_slug:
+
+- If present: Strict validation performed
+- If missing: SDK injects from config + logs warning
 
 Example store slugs:
 

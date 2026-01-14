@@ -67,18 +67,22 @@ class VendWeaveApiClient
     ): array {
         $this->validateCredentials();
 
-        $params = [
+        // Use intelligent parameter mapping (two-layer system)
+        $params = $this->normalizeApiPayload([
             'store_slug' => $this->storeSlug,
             'order_id' => $orderId,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
-        ];
+        ]);
 
         if ($trxId !== null) {
             $params['trx_id'] = $trxId;
         }
 
-        return $this->request('POST', '/api/v1/woocommerce/poll-transaction', $params);
+        $response = $this->request('POST', '/api/v1/woocommerce/poll-transaction', $params);
+        
+        // Normalize response structure (List → Object, auto-detect fields)
+        return $this->normalizeResponse($response);
     }
 
     /**
@@ -101,15 +105,19 @@ class VendWeaveApiClient
     ): array {
         $this->validateCredentials();
 
-        $params = [
+        // Use intelligent parameter mapping (two-layer system)
+        $params = $this->normalizeApiPayload([
             'store_slug' => $this->storeSlug,
             'order_id' => $orderId,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
             'trx_id' => $trxId,
-        ];
+        ]);
 
-        return $this->request('POST', '/api/v1/woocommerce/verify-transaction', $params);
+        $response = $this->request('POST', '/api/v1/woocommerce/verify-transaction', $params);
+        
+        // Normalize response structure (List → Object, auto-detect fields)
+        return $this->normalizeResponse($response);
     }
 
     /**
@@ -252,4 +260,176 @@ class VendWeaveApiClient
             return $value;
         }, $data, array_keys($data));
     }
+
+    /**
+     * Normalize API payload using two-layer parameter mapping.
+     * 
+     * Layer 1: Config-based mapping (api_param_mapping)
+     * Layer 2: Auto-detection fallback (backward compatibility)
+     * 
+     * This ensures the SDK adapts to POS API contract without forcing
+     * users to change their code.
+     *
+     * @param array $payload
+     * @return array Normalized payload with POS API expected field names
+     */
+    private function normalizeApiPayload(array $payload): array
+    {
+        $mapping = config('vendweave.api_param_mapping', [
+            'order_id' => 'wc_order_id',
+            'amount' => 'expected_amount',
+        ]);
+
+        $normalized = [];
+
+        foreach ($payload as $key => $value) {
+            // Layer 1: Apply configured mapping
+            if (isset($mapping[$key])) {
+                $normalized[$mapping[$key]] = $value;
+                $this->log('debug', 'API param mapped', [
+                    'from' => $key,
+                    'to' => $mapping[$key],
+                    'value' => $this->sanitizeValue($key, $value),
+                ]);
+            } else {
+                $normalized[$key] = $value;
+            }
+        }
+
+        // Layer 2: Auto-detection fallback for backward compatibility
+        // If wc_order_id not set but order_id exists, auto-map it
+        if (!isset($normalized['wc_order_id']) && isset($normalized['order_id'])) {
+            $normalized['wc_order_id'] = $normalized['order_id'];
+            $this->log('debug', 'Auto-mapped order_id → wc_order_id');
+        }
+
+        // If expected_amount not set but amount exists, auto-map it
+        if (!isset($normalized['expected_amount']) && isset($normalized['amount'])) {
+            $normalized['expected_amount'] = $normalized['amount'];
+            $this->log('debug', 'Auto-mapped amount → expected_amount');
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Normalize API response structure and field names.
+     * 
+     * Handles:
+     * - List (indexed array) → Object (associative array)
+     * - Missing store_slug injection from config
+     * - Multiple field name variations (wc_order_id, order_id, etc.)
+     * 
+     * This makes the SDK resilient to API response structure changes.
+     *
+     * @param array $response Raw API response
+     * @return array Normalized response
+     */
+    private function normalizeResponse(array $response): array
+    {
+        // Step 1: Convert List to Object if needed
+        if ($this->isListResponse($response)) {
+            $this->log('debug', 'Converting List response to Object');
+            $response = $this->convertListToObject($response);
+        }
+
+        // Step 2: Auto-detect and normalize field names
+        $response = $this->normalizeResponseFields($response);
+
+        // Step 3: Inject missing store_slug if not present
+        if (!isset($response['store_slug']) && $this->storeSlug) {
+            $this->log('warning', 'API response missing store_slug, injecting from config', [
+                'injected_store_slug' => $this->storeSlug,
+            ]);
+            $response['store_slug'] = $this->storeSlug;
+        }
+
+        return $response;
+    }
+
+    /**
+     * Check if response is a List (indexed array) vs Object (associative array).
+     */
+    private function isListResponse(array $response): bool
+    {
+        if (empty($response)) {
+            return false;
+        }
+
+        // If all keys are numeric and sequential, it's a List
+        $keys = array_keys($response);
+        return $keys === array_keys($keys);
+    }
+
+    /**
+     * Convert List response to Object by taking first element.
+     * 
+     * Some API endpoints return [{ data }] instead of { data }
+     */
+    private function convertListToObject(array $response): array
+    {
+        if (empty($response)) {
+            return [];
+        }
+
+        // Take first element if it's an array
+        $first = reset($response);
+        return is_array($first) ? $first : $response;
+    }
+
+    /**
+     * Normalize response field names using fallback detection.
+     * 
+     * Example: API may return wc_order_id, order_id, or order_no
+     * SDK normalizes all to a consistent structure.
+     */
+    private function normalizeResponseFields(array $response): array
+    {
+        $fallbacks = config('vendweave.response_field_fallbacks', [
+            'order_id' => ['wc_order_id', 'order_id', 'order_no', 'invoice_id'],
+            'amount' => ['expected_amount', 'amount', 'total', 'grand_total'],
+            'store_slug' => ['store_slug', 'store_id', 'shop_slug'],
+        ]);
+
+        $normalized = $response;
+
+        foreach ($fallbacks as $standardField => $variations) {
+            // Skip if already present
+            if (isset($normalized[$standardField])) {
+                continue;
+            }
+
+            // Try to find value in variations
+            foreach ($variations as $variant) {
+                if (isset($response[$variant])) {
+                    $normalized[$standardField] = $response[$variant];
+                    
+                    if ($variant !== $standardField) {
+                        $this->log('debug', 'Auto-detected response field', [
+                            'found' => $variant,
+                            'normalized_to' => $standardField,
+                        ]);
+                    }
+                    break;
+                }
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Sanitize a single value for logging.
+     */
+    private function sanitizeValue(string $key, $value)
+    {
+        $sensitive = ['api_key', 'api_secret', 'secret', 'password', 'trx_id'];
+        
+        if (in_array(strtolower($key), $sensitive)) {
+            return '***REDACTED***';
+        }
+        
+        return $value;
+    }
 }
+

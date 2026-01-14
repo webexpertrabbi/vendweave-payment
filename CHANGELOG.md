@@ -1,0 +1,159 @@
+# Changelog
+
+All notable changes to the VendWeave Payment SDK will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [1.1.0] - 2026-01-14
+
+### 🎯 Major Improvements
+
+This release transforms VendWeave from a basic gateway into a **production-grade SaaS SDK** with intelligent auto-adaptation capabilities.
+
+### ✨ Added
+
+- **Two-Layer Parameter Mapping System**
+
+  - Config-based mapping (`api_param_mapping` in config)
+  - Auto-detection fallback for backward compatibility
+  - SDK automatically maps `order_id` → `wc_order_id` and `amount` → `expected_amount`
+  - Users never need to change their code to match API contract
+
+- **Intelligent Response Normalization**
+
+  - Auto-converts List (indexed array) responses to Object (associative array)
+  - Multi-field auto-detection (handles `wc_order_id`, `order_id`, `order_no`, `invoice_id`)
+  - Automatic injection of missing `store_slug` from configuration
+  - SDK adapts to API response structure changes automatically
+
+- **Graceful Degradation**
+
+  - `store_slug` validation now degrades gracefully when missing from API
+  - Logs warnings instead of failing transactions
+  - Enhanced production debugging with detailed logging
+
+- **API Credential Type Documentation**
+
+  - Clear warnings in config file about credential types
+  - Explains difference between "General API Credentials" (website) vs "Manual Payment API Keys" (app)
+  - Prevents common 401 Unauthorized errors
+
+- **Response Field Fallbacks Configuration**
+  - `response_field_fallbacks` config option
+  - Handles multiple field name variations automatically
+  - Future-proof against API contract changes
+
+### 🔄 Changed
+
+- **Package Name**: `vendweave/gateway` → `vendweave/payment`
+
+  - Reflects universal payment SDK nature (not WooCommerce-specific)
+  - Old package name deprecated
+
+- **API Parameter Names** (Transparent to Users)
+  - Now sends `wc_order_id` instead of `order_id` to POS API
+  - Now sends `expected_amount` instead of `amount` to POS API
+  - **No code changes required** - SDK handles mapping automatically
+  - Eliminates 422 validation errors from POS API
+
+### 🐛 Fixed
+
+- Fixed 422 validation errors caused by incorrect parameter names
+- Fixed parsing failures when API returns List instead of Object
+- Fixed transaction verification failures when `store_slug` missing from API response
+- Fixed "Unknown Status" errors by adding proper response normalization
+
+### 📝 Documentation
+
+- Added comprehensive CHANGELOG.md
+- Updated config file with credential type warnings
+- Enhanced inline code documentation
+- Added migration notes for v1.0.0 users
+
+---
+
+## [1.0.0] - 2026-01-13
+
+### Initial Release
+
+- Basic VendWeave POS payment verification
+- Support for bKash, Nagad, Rocket, Upay
+- Real-time polling mechanism
+- Store-scoped transaction verification
+- Exact amount matching
+- Event system (PaymentVerified, PaymentFailed)
+- Order field mapping configuration
+- Production-ready security features
+
+---
+
+## Migration Guide: 1.0.0 → 1.1.0
+
+### For Existing Users
+
+**Good News**: This is a **backward-compatible** update. No code changes required!
+
+### Installation
+
+```bash
+composer require vendweave/payment
+```
+
+If you're upgrading from `vendweave/gateway`:
+
+```bash
+composer remove vendweave/gateway
+composer require vendweave/payment
+```
+
+### What Changed Automatically
+
+1. **Parameter Mapping**: SDK now sends correct parameters to POS API
+
+   - Your code still uses `$order->id` and `$order->amount`
+   - SDK automatically maps to `wc_order_id` and `expected_amount`
+
+2. **Response Handling**: SDK now handles all response structure variations
+
+   - No changes needed in your code
+   - SDK normalizes everything automatically
+
+3. **Store Validation**: More resilient to API response variations
+   - Still secure, but won't fail if API doesn't return `store_slug`
+
+### What You Should Do
+
+1. **Update `.env` Credentials** (If you had 401 errors)
+
+   - Make sure you're using **"General API Credentials"** from VendWeave dashboard
+   - Not "Manual Payment API Keys" (those are for Android app only)
+
+2. **Re-publish Config** (Optional, recommended)
+
+   ```bash
+   php artisan vendor:publish --tag=vendweave-config --force
+   ```
+
+   This gives you the new credential warnings and field fallback options.
+
+3. **Clear Config Cache**
+   ```bash
+   php artisan config:clear
+   ```
+
+### Breaking Changes
+
+**None** - All changes are backward compatible.
+
+The new package name (`vendweave/payment`) is the only "breaking" change, but it's just a namespace update in Composer.
+
+---
+
+## Support
+
+For issues and feature requests, please open an issue on GitHub.
+
+**VendWeave Payment SDK — Adaptive, Intelligent, Production-Ready 🚀**

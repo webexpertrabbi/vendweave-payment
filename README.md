@@ -1,8 +1,8 @@
-# VendWeave Laravel Payment Gateway
+# VendWeave Laravel Payment SDK
 
-VendWeave একটি production-grade Laravel payment gateway package, যা VendWeave POS infrastructure ব্যবহার করে নিরাপদভাবে payment verification সম্পন্ন করে।
+VendWeave একটি production-grade Laravel payment SDK, যা VendWeave POS infrastructure ব্যবহার করে নিরাপদভাবে payment verification সম্পন্ন করে।
 
-এই প্যাকেজটি **bKash, Nagad, Rocket এবং Upay** সমর্থন করে।
+এই SDK **bKash, Nagad, Rocket এবং Upay** সমর্টন করে এবং **আপনার সিস্টেমের সাথে auto-adapt** করে।
 
 ---
 
@@ -18,6 +18,8 @@ VendWeave একটি production-grade Laravel payment gateway package, যা 
 | 🚦 Rate Limiting         | Built-in protection against abuse          |
 | 🧩 Laravel Native        | Works with Laravel 10 & 11                 |
 | 🧾 POS Authority         | POS is single source of truth              |
+| 🤖 Auto-Adaptation       | SDK adapts to your DB structure            |
+| 🔄 Smart Normalization   | Handles API response variations            |
 
 ---
 
@@ -37,10 +39,26 @@ VendWeave একটি production-grade Laravel payment gateway package, যা 
 ### Step 1: Install Package
 
 ```bash
-composer require vendweave/gateway
+composer require vendweave/payment
 ```
 
-### Step 2: Publish Config
+### Step 3: Get Your API Credentials
+
+> ⚠️ **CRITICAL**: Use the correct API credential type!
+
+#### For Laravel/Website Integration:
+
+1. Log into your [VendWeave Dashboard](https://vendweave.com/dashboard)
+2. Go to **Settings** → **API Credentials**
+3. Use **"General API Credentials"** or **"Website API Keys"**
+4. ❌ **DO NOT USE** "Manual Payment API Keys" (those are for Android app only)
+
+#### Common Mistake:
+
+- ❌ Using "Manual Payment API Keys" → Results in **401 Unauthorized** error
+- ✅ Using "General/Website API Keys" → Correct for Laravel
+
+### Step 4: Add Environment Variables
 
 ```bash
 php artisan vendor:publish --tag=vendweave-config
@@ -220,10 +238,23 @@ protected $listen = [
 
 | Item            | Status               |
 | --------------- | -------------------- |
-| Version         | **v1.0.0**           |
+| Version         | **v1.1.0**           |
 | Stability       | **Production Ready** |
 | Laravel Support | 10.x, 11.x           |
 | PHP Support     | 8.1+                 |
+| Auto-Adaptation | ✅ Enabled           |
+
+---
+
+## 🆕 What's New in v1.1.0
+
+- ✅ **Two-layer parameter mapping** - SDK auto-maps to POS API contract
+- ✅ **Intelligent response normalization** - Handles List/Object variations
+- ✅ **Graceful degradation** - Works even with incomplete API responses
+- ✅ **Enhanced documentation** - Clear API credential type guidance
+- ✅ **Better debugging** - Detailed logging for production issues
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 ---
 

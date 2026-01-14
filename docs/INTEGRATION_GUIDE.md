@@ -37,8 +37,10 @@ Schema::create('orders', function (Blueprint $table) {
 ### Step 1: Install via Composer
 
 ```bash
-composer require vendweave/gateway
+composer require vendweave/payment
 ```
+
+> 📝 **Upgrading from v1.0.0?** See [CHANGELOG.md](../CHANGELOG.md) migration guide.
 
 ### Step 2: Publish Configuration
 
@@ -51,6 +53,27 @@ php artisan vendor:publish --tag=vendweave-config
 ---
 
 ## ⚙️ Environment Setup
+
+### Critical: API Credential Types
+
+> ⚠️ **Common Mistake Alert**: Using wrong API credentials causes 401 Unauthorized error!
+
+#### Step 1: Get Correct Credentials
+
+1. Log into [VendWeave Dashboard](https://vendweave.com/dashboard)
+2. Navigate to: **Settings** → **API Credentials**
+3. Look for the section based on your integration:
+
+| Integration Type          | Use This Section          | Status          |
+| ------------------------- | ------------------------- | --------------- |
+| 🌐 Laravel/Website        | "General API Credentials" | ✅ **CORRECT**  |
+| 🌐 Laravel/Website        | "Website API Keys"        | ✅ **CORRECT**  |
+| 📱 Android SMS App        | "Manual Payment API Keys" | ✅ For App Only |
+| ❌ Laravel using "Manual" | "Manual Payment API Keys" | ❌ **WRONG**    |
+
+> ❌ **NEVER use "Manual Payment API Keys" for Laravel integration!**
+
+#### Step 2: Add to `.env`
 
 `.env` ফাইলে add করো:
 

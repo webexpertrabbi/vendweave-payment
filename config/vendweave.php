@@ -9,6 +9,16 @@ return [
     | Your VendWeave POS API credentials. These are required for the package
     | to communicate with the VendWeave POS system.
     |
+    | ⚠️ IMPORTANT: Use the correct API credentials for your integration type:
+    |
+    | 🌍 Website/Laravel Integration:
+    |    - Use "General API Credentials" or "Website API Keys" from dashboard
+    |
+    | 📱 Android SMS App:
+    |    - Use "Manual Payment API Keys" from dashboard
+    |
+    | ❌ Using the wrong credential type will result in 401 Unauthorized errors.
+    |
     */
 
     'api_key' => env('VENDWEAVE_API_KEY'),
@@ -181,5 +191,48 @@ return [
         'paid' => 'paid',           // When payment is confirmed
         'pending' => 'pending',     // When payment is pending
         'failed' => 'failed',       // When payment fails
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | API Parameter Mapping (Vendor Contract Alignment)
+    |--------------------------------------------------------------------------
+    |
+    | The VendWeave POS API expects specific parameter names.
+    | This SDK automatically maps your internal field names to the API contract.
+    |
+    | POS API Contract:
+    | - wc_order_id (not order_id)
+    | - expected_amount (not amount)
+    |
+    | The SDK uses a two-layer system:
+    | 1. Config-based mapping (this section)
+    | 2. Auto-detection fallback (automatic)
+    |
+    | You don't need to change this unless the POS API contract changes.
+    |
+    */
+
+    'api_param_mapping' => [
+        'order_id' => 'wc_order_id',
+        'amount' => 'expected_amount',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Response Field Auto-Detection
+    |--------------------------------------------------------------------------
+    |
+    | The POS API may return different field names in responses.
+    | The SDK automatically attempts to find these fields using fallback logic.
+    |
+    | This ensures compatibility even if the API response structure changes.
+    |
+    */
+
+    'response_field_fallbacks' => [
+        'order_id' => ['wc_order_id', 'order_id', 'order_no', 'invoice_id'],
+        'amount' => ['expected_amount', 'amount', 'total', 'grand_total'],
+        'store_slug' => ['store_slug', 'store_id', 'shop_slug'],
     ],
 ];

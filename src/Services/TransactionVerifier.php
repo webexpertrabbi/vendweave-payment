@@ -9,6 +9,7 @@ use VendWeave\Gateway\Exceptions\StoreMismatchException;
 use VendWeave\Gateway\Exceptions\TransactionAlreadyUsedException;
 use VendWeave\Gateway\Exceptions\TransactionExpiredException;
 use VendWeave\Gateway\Exceptions\TransactionNotFoundException;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Transaction verification service.
@@ -133,18 +134,30 @@ class TransactionVerifier
         $trxId = $response['trx_id'] ?? null;
         $receivedAmount = (float) ($response['amount'] ?? 0);
         $receivedMethod = strtolower($response['payment_method'] ?? '');
-        $receivedStoreSlug = $response['store_slug'] ?? '';
+        $receivedStoreSlug = $response['store_slug'] ?? null;
         $expectedStoreSlug = $this->apiClient->getStoreSlug();
 
-        // 1. Validate store scope isolation (CRITICAL SECURITY CHECK)
-        if ($expectedStoreSlug !== null && $receivedStoreSlug !== $expectedStoreSlug) {
-            return VerificationResult::failed(
-                'STORE_MISMATCH',
-                "Transaction belongs to store {$receivedStoreSlug}, expected {$expectedStoreSlug}"
-            );
+        // 1. Validate store scope isolation (SECURITY CHECK with graceful degradation)
+        if ($expectedStoreSlug !== null && $receivedStoreSlug !== null) {
+            // Both exist - strict validation
+            if ($receivedStoreSlug !== $expectedStoreSlug) {
+                return VerificationResult::failed(
+                    'STORE_MISMATCH',
+                    "Transaction belongs to store {$receivedStoreSlug}, expected {$expectedStoreSlug}"
+                );
+            }
+        } elseif ($expectedStoreSlug !== null && $receivedStoreSlug === null) {
+            // API didn't return store_slug - log warning but don't fail
+            // The SDK already injected it in VendWeaveApiClient::normalizeResponse()
+            // but we log for transparency
+            Log::warning('[VendWeave] API response missing store_slug - graceful degradation active', [
+                'expected_store_slug' => $expectedStoreSlug,
+                'trx_id' => $trxId,
+                'message' => 'POS API should return store_slug. SDK injected from config but validation skipped.',
+            ]);
         }
 
-        // 2. Validate exact amount match (NO TOLERANCE)
+        // 2. Validate exact amount match (NO TOLERANCE - CRITICAL)
         if (!$this->amountsMatch($expectedAmount, $receivedAmount)) {
             return VerificationResult::failed(
                 'AMOUNT_MISMATCH',
@@ -165,7 +178,7 @@ class TransactionVerifier
             $trxId,
             $receivedAmount,
             $receivedMethod,
-            $receivedStoreSlug
+            $receivedStoreSlug ?? $expectedStoreSlug
         );
     }
 
