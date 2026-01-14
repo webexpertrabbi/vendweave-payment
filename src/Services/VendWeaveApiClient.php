@@ -40,7 +40,16 @@ class VendWeaveApiClient
         $this->storeSlug = $storeSlug;
 
         // SSL verification - can be disabled for local development
-        $verifySsl = config('vendweave.verify_ssl', true);
+        // Try config first, then env directly
+        $verifySsl = config('vendweave.verify_ssl');
+        if ($verifySsl === null) {
+            $envValue = env('VENDWEAVE_VERIFY_SSL', 'true');
+            $verifySsl = filter_var($envValue, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+        }
+        // Handle string 'false' from config
+        if (is_string($verifySsl)) {
+            $verifySsl = filter_var($verifySsl, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+        }
 
         $this->client = new Client([
             'base_uri' => $this->endpoint,
