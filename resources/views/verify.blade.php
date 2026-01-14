@@ -39,19 +39,19 @@
         
         .container {
             width: 100%;
-            max-width: 420px;
+            max-width: 700px;
         }
         
         .card {
             background: var(--bg-secondary);
             border-radius: 16px;
-            padding: 32px;
+            padding: 32px 40px;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
         
         .header {
             text-align: center;
-            margin-bottom: 32px;
+            margin-bottom: 24px;
         }
         
         .payment-icon {
@@ -80,9 +80,9 @@
         .amount-display {
             background: var(--bg-card);
             border-radius: 12px;
-            padding: 24px;
+            padding: 20px;
             text-align: center;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }
         
         .amount-label {
@@ -107,9 +107,9 @@
         
         .status-container {
             text-align: center;
-            padding: 24px 0;
+            padding: 16px 0;
             border-bottom: 1px solid var(--border);
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }
         
         .status-indicator {
@@ -160,7 +160,7 @@
         }
         
         .trx-input-container {
-            margin-bottom: 24px;
+            margin-bottom: 16px;
         }
         
         .trx-label {
@@ -193,24 +193,24 @@
         .instructions {
             background: var(--bg-card);
             border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 24px;
+            padding: 14px 16px;
+            margin-bottom: 20px;
         }
         
         .instructions h3 {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
             color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
         
         .instructions ol {
-            padding-left: 20px;
-            font-size: 14px;
+            padding-left: 18px;
+            font-size: 13px;
             color: var(--text-secondary);
-            line-height: 1.8;
+            line-height: 1.7;
         }
         
         .btn {
@@ -280,14 +280,48 @@
             margin-top: 24px;
         }
         
-        /* Responsive */
-        @media (max-width: 480px) {
+        /* Two Column Layout for Desktop */
+        @media (min-width: 600px) {
+            .two-column {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+            }
+            
+            .btn-group {
+                display: flex;
+                gap: 12px;
+            }
+            
+            .btn-group .btn {
+                flex: 1;
+                margin-top: 0;
+            }
+        }
+        
+        /* Responsive for Mobile */
+        @media (max-width: 599px) {
             .card {
-                padding: 24px;
+                padding: 20px;
             }
             
             .amount-value {
                 font-size: 28px;
+            }
+            
+            .two-column {
+                display: block;
+            }
+        }
+        
+        /* Extra small screens */
+        @media (max-width: 380px) {
+            .card {
+                padding: 16px;
+            }
+            
+            .amount-value {
+                font-size: 24px;
             }
         }
     </style>
@@ -325,34 +359,37 @@
             
             <div id="error-message" class="error-message"></div>
             
-            <div class="trx-input-container">
-                <label class="trx-label" for="trx-id">Transaction ID (Optional)</label>
-                <input 
-                    type="text" 
-                    id="trx-id" 
-                    class="trx-input" 
-                    placeholder="Enter your {{ ucfirst($paymentMethod) }} TRX ID"
-                    autocomplete="off"
-                >
+            <div class="two-column">
+                <div class="trx-input-container">
+                    <label class="trx-label" for="trx-id">Transaction ID (Optional)</label>
+                    <input 
+                        type="text" 
+                        id="trx-id" 
+                        class="trx-input" 
+                        placeholder="Enter your {{ ucfirst($paymentMethod) }} TRX ID"
+                        autocomplete="off"
+                    >
+                </div>
+                
+                <div class="instructions">
+                    <h3>How to Pay</h3>
+                    <ol>
+                        <li>Open your {{ ucfirst($paymentMethod) }} app</li>
+                        <li>Send exactly ৳{{ number_format($amount, 2) }}</li>
+                        <li>Wait for auto-verify or enter TRX ID</li>
+                    </ol>
+                </div>
             </div>
             
-            <div class="instructions">
-                <h3>How to Pay</h3>
-                <ol>
-                    <li>Open your {{ ucfirst($paymentMethod) }} app</li>
-                    <li>Send exactly ৳{{ number_format($amount, 2) }}</li>
-                    <li>Wait for automatic verification</li>
-                    <li>Or enter TRX ID manually</li>
-                </ol>
+            <div class="btn-group">
+                <button id="verify-btn" class="btn btn-primary" type="button">
+                    Verify Manually
+                </button>
+                
+                <button id="cancel-btn" class="btn btn-secondary" type="button">
+                    Cancel
+                </button>
             </div>
-            
-            <button id="verify-btn" class="btn btn-primary" type="button">
-                Verify Manually
-            </button>
-            
-            <button id="cancel-btn" class="btn btn-secondary" type="button">
-                Cancel Payment
-            </button>
             
             <div class="timer">
                 Time remaining: <span id="timer-value" class="timer-value">5:00</span>
