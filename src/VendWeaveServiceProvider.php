@@ -5,6 +5,7 @@ namespace VendWeave\Gateway;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use VendWeave\Gateway\Contracts\PaymentGatewayInterface;
+use VendWeave\Gateway\Console\Commands\ExpireReferencesCommand;
 use VendWeave\Gateway\Services\OrderAdapter;
 use VendWeave\Gateway\Services\PaymentManager;
 use VendWeave\Gateway\Services\TransactionVerifier;
@@ -63,6 +64,7 @@ class VendWeaveServiceProvider extends ServiceProvider
         $this->registerRoutes();
         $this->registerViews();
         $this->registerRateLimiting();
+        $this->registerCommands();
     }
 
     /**
@@ -81,10 +83,16 @@ class VendWeaveServiceProvider extends ServiceProvider
                 __DIR__ . '/../resources/views' => resource_path('views/vendor/vendweave'),
             ], 'vendweave-views');
 
+            // Publish migrations
+            $this->publishes([
+                __DIR__ . '/../database/migrations' => database_path('migrations'),
+            ], 'vendweave-migrations');
+
             // Publish all
             $this->publishes([
                 __DIR__ . '/../config/vendweave.php' => config_path('vendweave.php'),
                 __DIR__ . '/../resources/views' => resource_path('views/vendor/vendweave'),
+                __DIR__ . '/../database/migrations' => database_path('migrations'),
             ], 'vendweave');
         }
     }
@@ -135,6 +143,18 @@ class VendWeaveServiceProvider extends ServiceProvider
                 )->by($request->ip() . '|' . $request->route('order'));
             });
         });
+    }
+
+    /**
+     * Register console commands.
+     */
+    protected function registerCommands(): void
+    {
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ExpireReferencesCommand::class,
+            ]);
+        }
     }
 
     /**

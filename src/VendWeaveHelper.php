@@ -3,6 +3,7 @@
 namespace VendWeave\Gateway;
 
 use Illuminate\Support\Facades\Session;
+use VendWeave\Gateway\Services\ReferenceGovernor;
 
 /**
  * Helper class for common VendWeave operations.
@@ -41,7 +42,13 @@ class VendWeaveHelper
         ?string $reference = null
     ): string {
         $storeSlug = config('vendweave.store_slug', 'default');
+        $storeId = config('vendweave.store_id', 1);
+        $ttl = config('vendweave.reference_ttl', 30);
+        
         $reference = $reference ?? self::generateReference($storeSlug);
+
+        // Reserve reference in governance engine (if enabled)
+        ReferenceGovernor::reserve($storeId, $orderId, $reference, $ttl);
 
         // Store in session for verification page
         Session::put("vendweave_order_{$orderId}", [
@@ -57,9 +64,18 @@ class VendWeaveHelper
      * Clear stored order data.
      *
      * @param string $orderId
+     * @param bool $cancelReference Whether to cancel the reference in governance
      */
-    public static function clearOrderData(string $orderId): void
+    public static function clearOrderData(string $orderId, bool $cancelReference = false): void
     {
+        $orderData = Session::get("vendweave_order_{$orderId}");
+        
+        // Cancel reference in governance if requested
+        if ($cancelReference && $orderData && isset($orderData['reference'])) {
+            $storeId = config('vendweave.store_id', 1);
+            ReferenceGovernor::cancel($orderData['reference'], $storeId);
+        }
+        
         Session::forget("vendweave_order_{$orderId}");
     }
 
