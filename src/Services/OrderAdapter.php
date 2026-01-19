@@ -43,6 +43,7 @@ class OrderAdapter
             'payment_method' => 'payment_method',
             'status' => 'status',
             'trx_id' => 'trx_id',
+            'payment_reference' => 'payment_reference',
         ]);
 
         $this->statusMap = config('vendweave.status_mapping', [
@@ -149,6 +150,29 @@ class OrderAdapter
     }
 
     /**
+     * Get the payment reference from order.
+     *
+     * @param Model $order
+     * @return string|null
+     */
+    public function getReference(Model $order): ?string
+    {
+        return $this->getValue($order, 'payment_reference');
+    }
+
+    /**
+     * Set the payment reference on order.
+     *
+     * @param Model $order
+     * @param string $reference
+     * @return void
+     */
+    public function setReference(Model $order, string $reference): void
+    {
+        $this->setValue($order, 'payment_reference', $reference);
+    }
+
+    /**
      * Map VendWeave status to application status.
      *
      * @param string $vendweaveStatus (paid, pending, failed)
@@ -166,10 +190,15 @@ class OrderAdapter
      * @param string $trxId Transaction ID
      * @return bool
      */
-    public function markAsPaid(Model $order, string $trxId): bool
+    public function markAsPaid(Model $order, string $trxId, ?string $reference = null): bool
     {
         $this->setValue($order, 'status', $this->mapStatus('paid'));
         $this->setValue($order, 'trx_id', $trxId);
+        
+        // Store payment reference if provided
+        if ($reference !== null) {
+            $this->setValue($order, 'payment_reference', $reference);
+        }
         
         return $order->save();
     }

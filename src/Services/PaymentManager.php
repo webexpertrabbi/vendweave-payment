@@ -23,13 +23,15 @@ class PaymentManager implements PaymentGatewayInterface
      * @param float $amount The exact amount to verify (no tolerance)
      * @param string $paymentMethod The payment method (bkash, nagad, rocket, upay)
      * @param string|null $trxId Optional transaction ID for direct lookup
+     * @param string|null $reference Optional payment reference for matching
      * @return VerificationResult
      */
     public function verify(
         string $orderId,
         float $amount,
         string $paymentMethod,
-        ?string $trxId = null
+        ?string $trxId = null,
+        ?string $reference = null
     ): VerificationResult {
         // Normalize payment method
         $paymentMethod = strtolower(trim($paymentMethod));
@@ -42,7 +44,7 @@ class PaymentManager implements PaymentGatewayInterface
             );
         }
 
-        return $this->verifier->verify($orderId, $amount, $paymentMethod, $trxId);
+        return $this->verifier->verify($orderId, $amount, $paymentMethod, $trxId, $reference);
     }
 
     /**

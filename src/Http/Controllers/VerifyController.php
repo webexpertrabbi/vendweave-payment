@@ -55,6 +55,7 @@ class VerifyController extends BaseController
             'amount' => $orderData['amount'],
             'paymentMethod' => $orderData['payment_method'],
             'paymentMethodInfo' => $this->paymentManager->getPaymentMethodsInfo()[$orderData['payment_method']] ?? null,
+            'reference' => $orderData['reference'] ?? null,
             'pollUrl' => route('vendweave.poll', ['order' => $order]),
             'cancelUrl' => route('vendweave.cancelled', ['order' => $order]),
             'pollingInterval' => config('vendweave.polling.interval_ms', 2500),

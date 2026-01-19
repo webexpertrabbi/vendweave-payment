@@ -68,6 +68,7 @@ class VendWeaveApiClient
      * @param float $amount
      * @param string $paymentMethod
      * @param string|null $trxId
+     * @param string|null $reference Payment reference for matching
      * @return array Raw API response data
      * @throws ApiConnectionException
      * @throws InvalidCredentialsException
@@ -76,7 +77,8 @@ class VendWeaveApiClient
         string $orderId,
         float $amount,
         string $paymentMethod,
-        ?string $trxId = null
+        ?string $trxId = null,
+        ?string $reference = null
     ): array {
         $this->validateCredentials();
 
@@ -88,9 +90,21 @@ class VendWeaveApiClient
             'payment_method' => $paymentMethod,
         ]);
 
+        // Add optional parameters
         if ($trxId !== null) {
             $params['trx_id'] = $trxId;
         }
+        if ($reference !== null) {
+            $params['reference'] = $reference;
+        }
+
+        // Reference-based logging (before request for debugging)
+        $this->log('info', 'Poll Transaction', [
+            'reference' => $reference,
+            'order_id' => $orderId,
+            'amount' => $amount,
+            'store_slug' => $this->storeSlug,
+        ]);
 
         $response = $this->request('POST', '/api/v1/woocommerce/poll-transaction', $params);
         
@@ -130,6 +144,7 @@ class VendWeaveApiClient
      * @param float $amount
      * @param string $paymentMethod
      * @param string $trxId
+     * @param string|null $reference Payment reference for matching
      * @return array Raw API response data
      * @throws ApiConnectionException
      * @throws InvalidCredentialsException
@@ -138,7 +153,8 @@ class VendWeaveApiClient
         string $orderId,
         float $amount,
         string $paymentMethod,
-        string $trxId
+        string $trxId,
+        ?string $reference = null
     ): array {
         $this->validateCredentials();
 
@@ -150,6 +166,11 @@ class VendWeaveApiClient
             'payment_method' => $paymentMethod,
             'trx_id' => $trxId,
         ]);
+
+        // Add reference if provided
+        if ($reference !== null) {
+            $params['reference'] = $reference;
+        }
 
         $response = $this->request('POST', '/api/v1/woocommerce/verify-transaction', $params);
         

@@ -324,6 +324,71 @@
                 font-size: 24px;
             }
         }
+        
+        /* Reference Box Styles */
+        .reference-box {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            border: 2px solid #d97706;
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+        }
+        
+        .reference-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #78350f;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        
+        .reference-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: #1e293b;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 3px;
+            margin-bottom: 10px;
+        }
+        
+        .reference-copy-btn {
+            background: #1e293b;
+            color: #fbbf24;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .reference-copy-btn:hover {
+            background: #0f172a;
+            transform: scale(1.02);
+        }
+        
+        .reference-copy-btn.copied {
+            background: #059669;
+            color: white;
+        }
+        
+        .reference-note {
+            font-size: 11px;
+            color: #92400e;
+            margin-top: 10px;
+            line-height: 1.4;
+        }
     </style>
 </head>
 <body>
@@ -349,6 +414,17 @@
                     ৳{{ number_format($amount, 2) }}<span class="amount-currency">BDT</span>
                 </div>
             </div>
+            
+            @if($reference ?? null)
+            <div class="reference-box">
+                <div class="reference-label">⚠️ Include This Reference In Your Payment</div>
+                <div class="reference-value" id="ref-value">{{ $reference }}</div>
+                <button class="reference-copy-btn" id="copy-ref-btn" onclick="copyReference()">
+                    📋 Copy Reference
+                </button>
+                <div class="reference-note">Send money with this reference in the note/message field</div>
+            </div>
+            @endif
             
             <div class="status-container">
                 <div id="status-indicator" class="status-indicator status-pending">
@@ -420,6 +496,7 @@
                 orderId: @json($orderId),
                 amount: @json($amount),
                 paymentMethod: @json($paymentMethod),
+                reference: @json($reference ?? null),
                 pollUrl: @json($pollUrl),
                 cancelUrl: @json($cancelUrl),
                 pollingInterval: {{ $pollingInterval }},
@@ -477,6 +554,11 @@
                         amount: config.amount,
                         payment_method: config.paymentMethod
                     });
+                    
+                    // Add reference if available
+                    if (config.reference) {
+                        params.append('reference', config.reference);
+                    }
                     
                     const trxId = trxInput.value.trim();
                     if (trxId) {
@@ -626,6 +708,51 @@
             // Start on load
             startPolling();
         })();
+        
+        // Copy reference to clipboard
+        function copyReference() {
+            const refValue = document.getElementById('ref-value');
+            const copyBtn = document.getElementById('copy-ref-btn');
+            
+            if (refValue && navigator.clipboard) {
+                navigator.clipboard.writeText(refValue.innerText).then(function() {
+                    // Visual feedback
+                    copyBtn.classList.add('copied');
+                    copyBtn.innerHTML = '✓ Copied!';
+                    
+                    setTimeout(function() {
+                        copyBtn.classList.remove('copied');
+                        copyBtn.innerHTML = '📋 Copy Reference';
+                    }, 2000);
+                }).catch(function() {
+                    // Fallback for older browsers
+                    fallbackCopy(refValue.innerText);
+                });
+            } else {
+                fallbackCopy(refValue ? refValue.innerText : '');
+            }
+        }
+        
+        function fallbackCopy(text) {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-9999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            const copyBtn = document.getElementById('copy-ref-btn');
+            if (copyBtn) {
+                copyBtn.classList.add('copied');
+                copyBtn.innerHTML = '✓ Copied!';
+                setTimeout(function() {
+                    copyBtn.classList.remove('copied');
+                    copyBtn.innerHTML = '📋 Copy Reference';
+                }, 2000);
+            }
+        }
     </script>
 </body>
 </html>

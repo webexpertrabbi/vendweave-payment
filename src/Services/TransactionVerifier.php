@@ -34,23 +34,26 @@ class TransactionVerifier
      * @param float $expectedAmount
      * @param string $expectedMethod
      * @param string|null $trxId
+     * @param string|null $expectedReference Payment reference for matching
      * @return VerificationResult
      */
     public function verify(
         string $orderId,
         float $expectedAmount,
         string $expectedMethod,
-        ?string $trxId = null
+        ?string $trxId = null,
+        ?string $expectedReference = null
     ): VerificationResult {
         try {
             $response = $this->apiClient->pollTransaction(
                 $orderId,
                 $expectedAmount,
                 $expectedMethod,
-                $trxId
+                $trxId,
+                $expectedReference
             );
 
-            return $this->processResponse($response, $expectedAmount, $expectedMethod);
+            return $this->processResponse($response, $expectedAmount, $expectedMethod, $expectedReference);
 
         } catch (ApiConnectionException $e) {
             return VerificationResult::failed(
@@ -66,12 +69,14 @@ class TransactionVerifier
      * @param array $response
      * @param float $expectedAmount
      * @param string $expectedMethod
+     * @param string|null $expectedReference
      * @return VerificationResult
      */
     private function processResponse(
         array $response,
         float $expectedAmount,
-        string $expectedMethod
+        string $expectedMethod,
+        ?string $expectedReference = null
     ): VerificationResult {
         // Handle HTTP status codes
         $httpStatus = $response['_http_status'] ?? 200;
@@ -107,7 +112,8 @@ class TransactionVerifier
                 return $this->validateConfirmedTransaction(
                     $response,
                     $expectedAmount,
-                    $expectedMethod
+                    $expectedMethod,
+                    $expectedReference
                 );
 
             default:
@@ -124,12 +130,14 @@ class TransactionVerifier
      * @param array $response
      * @param float $expectedAmount
      * @param string $expectedMethod
+     * @param string|null $expectedReference
      * @return VerificationResult
      */
     private function validateConfirmedTransaction(
         array $response,
         float $expectedAmount,
-        string $expectedMethod
+        string $expectedMethod,
+        ?string $expectedReference = null
     ): VerificationResult {
         $trxId = $response['trx_id'] ?? null;
         $receivedAmount = (float) ($response['amount'] ?? 0);
@@ -155,6 +163,132 @@ class TransactionVerifier
                 'trx_id' => $trxId,
                 'message' => 'POS API should return store_slug. SDK injected from config but validation skipped.',
             ]);
+        }
+
+        // 2. Reference Identity Protocol (Phase 3)
+        // POS is source of truth, SDK enforces based on reference_status
+        $strictMode = config('vendweave.reference_strict_mode', false);
+        $referenceStatus = 'skipped'; // Default: no reference validation
+        $receivedReference = $response['reference'] ?? null;
+        $posReferenceStatus = $response['reference_status'] ?? null; // POS-provided status
+
+        // Log context for all reference operations
+        $referenceCreatedAt = $response['reference_created_at'] ?? null;
+        $referenceExpiresAt = $response['reference_expires_at'] ?? null;
+
+        $logContext = [
+            'expected_reference' => $expectedReference,
+            'received_reference' => $receivedReference,
+            'pos_reference_status' => $posReferenceStatus,
+            'reference_created_at' => $referenceCreatedAt,
+            'reference_expires_at' => $referenceExpiresAt,
+            'trx_id' => $trxId,
+            'strict_mode' => $strictMode,
+        ];
+
+        // 2a. Check POS reference_status first (expired/replayed detection)
+        if ($posReferenceStatus !== null) {
+            switch ($posReferenceStatus) {
+                case 'expired':
+                    $referenceStatus = 'expired';
+                    Log::warning('[VendWeave] Reference expired (POS reported)', array_merge($logContext, [
+                        'reference_status' => $referenceStatus,
+                    ]));
+                    return VerificationResult::failed(
+                        'REFERENCE_EXPIRED',
+                        "Reference {$receivedReference} has expired"
+                    );
+
+                case 'replayed':
+                case 'used':
+                    $referenceStatus = 'replayed';
+                    Log::warning('[VendWeave] Reference replay detected (POS reported)', array_merge($logContext, [
+                        'reference_status' => $referenceStatus,
+                    ]));
+                    return VerificationResult::failed(
+                        'REFERENCE_REPLAY',
+                        "Reference {$receivedReference} has already been used"
+                    );
+
+                case 'mismatched':
+                    $referenceStatus = 'mismatched';
+                    Log::warning('[VendWeave] Reference mismatch (POS reported)', array_merge($logContext, [
+                        'reference_status' => $referenceStatus,
+                    ]));
+                    return VerificationResult::failed(
+                        'REFERENCE_MISMATCH',
+                        "Reference mismatch reported by POS"
+                    );
+
+                case 'matched':
+                    $referenceStatus = 'matched';
+                    Log::info('[VendWeave] Reference matched (POS confirmed)', array_merge($logContext, [
+                        'reference_status' => $referenceStatus,
+                    ]));
+                    break;
+
+                case 'cancelled':
+                    $referenceStatus = 'cancelled';
+                    Log::warning('[VendWeave] Reference cancelled (POS reported)', array_merge($logContext, [
+                        'reference_status' => $referenceStatus,
+                    ]));
+                    return VerificationResult::failed(
+                        'REFERENCE_CANCELLED',
+                        "Reference {$receivedReference} has been cancelled"
+                    );
+            }
+        }
+
+        // 2b. SDK-side reference validation (if POS didn't provide status)
+        if ($posReferenceStatus === null) {
+            if ($strictMode && $expectedReference !== null) {
+                // STRICT MODE: Reference MUST match, no fallback
+                if ($receivedReference === null) {
+                    $referenceStatus = 'missing';
+                    Log::warning('[VendWeave] Strict mode: No reference in response', array_merge($logContext, [
+                        'reference_status' => $referenceStatus,
+                    ]));
+                    return VerificationResult::failed(
+                        'REFERENCE_MISSING',
+                        "Strict mode enabled: Reference expected but not received"
+                    );
+                }
+                if ($receivedReference !== $expectedReference) {
+                    $referenceStatus = 'mismatched';
+                    Log::warning('[VendWeave] Strict mode: Reference mismatch', array_merge($logContext, [
+                        'reference_status' => $referenceStatus,
+                    ]));
+                    return VerificationResult::failed(
+                        'REFERENCE_MISMATCH',
+                        "Reference mismatch: expected {$expectedReference}, received {$receivedReference}"
+                    );
+                }
+                $referenceStatus = 'matched';
+                Log::info('[VendWeave] Strict mode: Reference matched', array_merge($logContext, [
+                    'reference_status' => $referenceStatus,
+                ]));
+            } elseif ($expectedReference !== null && $receivedReference !== null) {
+                // NON-STRICT: Validate if both present
+                if ($receivedReference !== $expectedReference) {
+                    $referenceStatus = 'mismatched';
+                    Log::warning('[VendWeave] Reference mismatch detected', array_merge($logContext, [
+                        'reference_status' => $referenceStatus,
+                    ]));
+                    return VerificationResult::failed(
+                        'REFERENCE_MISMATCH',
+                        "Reference mismatch: expected {$expectedReference}, received {$receivedReference}"
+                    );
+                }
+                $referenceStatus = 'matched';
+                Log::info('[VendWeave] Reference matched successfully', array_merge($logContext, [
+                    'reference_status' => $referenceStatus,
+                ]));
+            } else {
+                // Reference validation skipped (backward compatibility)
+                Log::debug('[VendWeave] Reference validation skipped', array_merge($logContext, [
+                    'reference_status' => $referenceStatus,
+                ]));
+            }
         }
 
         // 2. Validate exact amount match (NO TOLERANCE - CRITICAL)
@@ -185,7 +319,10 @@ class TransactionVerifier
             $trxId,
             $receivedAmount,
             $receivedMethod,
-            $receivedStoreSlug ?? $expectedStoreSlug
+            $receivedStoreSlug ?? $expectedStoreSlug,
+            $referenceStatus,
+            $referenceCreatedAt,
+            $referenceExpiresAt
         );
     }
 

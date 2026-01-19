@@ -12,22 +12,42 @@ use Illuminate\Support\Facades\Session;
 class VendWeaveHelper
 {
     /**
+     * Generate a unique payment reference.
+     *
+     * Format: VW + 4 digits (e.g., VW3846)
+     * Used to uniquely identify payments within a store.
+     *
+     * @param string $storeSlug Store identifier (reserved for future uniqueness checks)
+     * @return string Reference code
+     */
+    public static function generateReference(string $storeSlug): string
+    {
+        return 'VW' . str_pad(random_int(1000, 9999), 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * Prepare order for verification and get redirect URL.
      *
      * @param string $orderId
      * @param float $amount
      * @param string $paymentMethod
+     * @param string|null $reference Optional custom reference (auto-generated if null)
      * @return string Redirect URL
      */
     public static function preparePayment(
         string $orderId,
         float $amount,
-        string $paymentMethod
+        string $paymentMethod,
+        ?string $reference = null
     ): string {
+        $storeSlug = config('vendweave.store_slug', 'default');
+        $reference = $reference ?? self::generateReference($storeSlug);
+
         // Store in session for verification page
         Session::put("vendweave_order_{$orderId}", [
             'amount' => $amount,
             'payment_method' => strtolower($paymentMethod),
+            'reference' => $reference,
         ]);
 
         return route('vendweave.verify', ['order' => $orderId]);

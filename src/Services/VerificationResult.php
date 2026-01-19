@@ -20,7 +20,10 @@ final class VerificationResult
         private readonly ?string $paymentMethod,
         private readonly ?string $storeSlug,
         private readonly ?string $errorCode,
-        private readonly ?string $errorMessage
+        private readonly ?string $errorMessage,
+        private readonly ?string $referenceStatus = null,
+        private readonly ?string $referenceCreatedAt = null,
+        private readonly ?string $referenceExpiresAt = null
     ) {}
 
     /**
@@ -30,7 +33,10 @@ final class VerificationResult
         string $trxId,
         float $amount,
         string $paymentMethod,
-        string $storeSlug
+        string $storeSlug,
+        ?string $referenceStatus = null,
+        ?string $referenceCreatedAt = null,
+        ?string $referenceExpiresAt = null
     ): self {
         return new self(
             self::STATUS_CONFIRMED,
@@ -39,7 +45,10 @@ final class VerificationResult
             $paymentMethod,
             $storeSlug,
             null,
-            null
+            null,
+            $referenceStatus,
+            $referenceCreatedAt,
+            $referenceExpiresAt
         );
     }
 
@@ -142,6 +151,30 @@ final class VerificationResult
         return $this->errorMessage;
     }
 
+    /**
+     * Get reference lifecycle status.
+     */
+    public function getReferenceStatus(): ?string
+    {
+        return $this->referenceStatus;
+    }
+
+    /**
+     * Get reference creation timestamp.
+     */
+    public function getReferenceCreatedAt(): ?string
+    {
+        return $this->referenceCreatedAt;
+    }
+
+    /**
+     * Get reference expiry timestamp.
+     */
+    public function getReferenceExpiresAt(): ?string
+    {
+        return $this->referenceExpiresAt;
+    }
+
     public function isConfirmed(): bool
     {
         return $this->status === self::STATUS_CONFIRMED;
@@ -185,6 +218,17 @@ final class VerificationResult
         if ($this->errorCode !== null) {
             $data['error_code'] = $this->errorCode;
             $data['error_message'] = $this->errorMessage;
+        }
+
+        // Reference lifecycle data
+        if ($this->referenceStatus !== null) {
+            $data['reference_status'] = $this->referenceStatus;
+        }
+        if ($this->referenceCreatedAt !== null) {
+            $data['reference_created_at'] = $this->referenceCreatedAt;
+        }
+        if ($this->referenceExpiresAt !== null) {
+            $data['reference_expires_at'] = $this->referenceExpiresAt;
         }
 
         return $data;

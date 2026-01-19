@@ -38,6 +38,7 @@ class PollController extends BaseController
         $amount = (float) $request->input('amount');
         $paymentMethod = strtolower($request->input('payment_method'));
         $trxId = $request->input('trx_id');
+        $reference = $request->input('reference');
 
         // Validate payment method
         if (!$this->paymentManager->isValidPaymentMethod($paymentMethod)) {
@@ -48,8 +49,8 @@ class PollController extends BaseController
             );
         }
 
-        // Verify transaction
-        $result = $this->paymentManager->verify($order, $amount, $paymentMethod, $trxId);
+        // Verify transaction (with optional reference)
+        $result = $this->paymentManager->verify($order, $amount, $paymentMethod, $trxId, $reference);
 
         return $this->formatResponse($result, $order);
     }

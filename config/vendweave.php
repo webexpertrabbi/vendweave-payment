@@ -202,6 +202,7 @@ return [
         'payment_method' => 'payment_method',   // Payment method column
         'status' => 'status',                   // Order status column
         'trx_id' => 'trx_id',                   // Transaction ID column (nullable)
+        'payment_reference' => 'payment_reference', // Payment reference column (nullable)
     ],
 
     /*
@@ -222,6 +223,37 @@ return [
         'pending' => 'pending',     // When payment is pending
         'failed' => 'failed',       // When payment fails
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reference Strict Mode
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, reference matching becomes mandatory. If reference is 
+    | expected but doesn't match, transaction fails even if amount matches.
+    |
+    | Default: false (backward compatible - amount fallback allowed)
+    |
+    | Set VENDWEAVE_REFERENCE_STRICT=true in .env to enable strict mode.
+    |
+    */
+
+    'reference_strict_mode' => env('VENDWEAVE_REFERENCE_STRICT', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reference TTL (Time To Live)
+    |--------------------------------------------------------------------------
+    |
+    | Maximum age of a reference in minutes. References older than this
+    | are considered expired. POS API enforces expiry, SDK validates
+    | the reference_status returned by POS.
+    |
+    | Default: 30 minutes
+    |
+    */
+
+    'reference_ttl' => env('VENDWEAVE_REFERENCE_TTL', 30),
 
     /*
     |--------------------------------------------------------------------------
