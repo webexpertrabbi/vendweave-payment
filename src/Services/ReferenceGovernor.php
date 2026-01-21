@@ -2,381 +2,349 @@
 
 namespace VendWeave\Gateway\Services;
 
-use VendWeave\Gateway\Models\Reference;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 
-/**
- * Reference Governance Engine.
- * 
- * Manages payment reference lifecycle:
- * - Reservation
- * - Matching
- * - Expiry
- * - Replay prevention
- * - Cancellation
- * - Analytics
- */
 class ReferenceGovernor
 {
-    /**
-     * Check if governance table exists.
-     */
-    public static function isEnabled(): bool
+    public const TABLE = 'vendweave_references';
+
+    public const STATUS_RESERVED = 'RESERVED';
+    public const STATUS_MATCHED = 'MATCHED';
+    public const STATUS_REPLAYED = 'REPLAYED';
+    public const STATUS_CANCELLED = 'CANCELLED';
+    public const STATUS_EXPIRED = 'EXPIRED';
+
+    private const STATUS_MAP = [
+        'reserved' => self::STATUS_RESERVED,
+        'matched' => self::STATUS_MATCHED,
+        'replayed' => self::STATUS_REPLAYED,
+        'cancelled' => self::STATUS_CANCELLED,
+        'expired' => self::STATUS_EXPIRED,
+    ];
+
+    public static function isAvailable(): bool
     {
+        if (!self::isEnabled()) {
+            return false;
+        }
+
         try {
-            return Schema::hasTable('vendweave_references');
-        } catch (\Exception $e) {
+            return Schema::hasTable(self::TABLE);
+        } catch (Throwable $e) {
             return false;
         }
     }
 
-    /**
-     * Reserve a reference for an order.
-     *
-     * @param int $storeId
-     * @param string $orderId
-     * @param string $reference
-     * @param int $ttlMinutes
-     * @return Reference|null
-     */
     public static function reserve(
-        int $storeId,
+        string|int $storeId,
         string $orderId,
         string $reference,
-        int $ttlMinutes = 30
-    ): ?Reference {
-        if (!self::isEnabled()) {
+        int|Carbon|null $ttlOrExpiresAt = null
+    ): ?array {
+        if (!self::isAvailable()) {
             return null;
         }
 
-        try {
-            // Check if reference already exists for this store
-            $existing = Reference::forStore($storeId)
-                ->byReference($reference)
-                ->whereIn('status', [Reference::STATUS_RESERVED, Reference::STATUS_MATCHED])
-                ->first();
+        $expiresAt = $ttlOrExpiresAt instanceof Carbon
+            ? $ttlOrExpiresAt
+            : now()->addMinutes($ttlOrExpiresAt ?? self::ttlMinutes());
 
+        try {
+            $existing = DB::table(self::TABLE)->where('reference', $reference)->first();
             if ($existing) {
-                Log::warning('[VendWeave] Reference already exists', [
-                    'reference' => $reference,
-                    'store_id' => $storeId,
-                    'existing_status' => $existing->status,
-                ]);
-                return null;
+                return (array) $existing;
             }
 
-            $ref = Reference::create([
-                'store_id' => $storeId,
-                'order_id' => $orderId,
+            DB::table(self::TABLE)->insert([
                 'reference' => $reference,
-                'status' => Reference::STATUS_RESERVED,
-                'expires_at' => now()->addMinutes($ttlMinutes),
+                'order_id' => $orderId,
+                'store_id' => (string) $storeId,
+                'status' => self::STATUS_RESERVED,
+                'expires_at' => $expiresAt,
+                'matched_at' => null,
+                'replay_count' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            self::log('info', '[VendWeave] Reference reserved', [
+                'reference' => $reference,
+                'status' => self::STATUS_RESERVED,
+                'order_id' => $orderId,
+                'store_id' => (string) $storeId,
+                'expires_at' => $expiresAt,
+                'matched_at' => null,
                 'replay_count' => 0,
             ]);
 
-            Log::info('[VendWeave] Reference reserved', [
-                'reference' => $reference,
-                'store_id' => $storeId,
-                'order_id' => $orderId,
-                'expires_at' => $ref->expires_at->toIso8601String(),
-            ]);
-
-            return $ref;
-        } catch (\Exception $e) {
-            Log::error('[VendWeave] Failed to reserve reference', [
-                'reference' => $reference,
-                'error' => $e->getMessage(),
-            ]);
+            return (array) DB::table(self::TABLE)->where('reference', $reference)->first();
+        } catch (Throwable $e) {
             return null;
         }
     }
 
-    /**
-     * Mark reference as matched (payment confirmed).
-     *
-     * @param string $reference
-     * @param int|null $storeId
-     * @return Reference|null
-     */
-    public static function match(string $reference, ?int $storeId = null): ?Reference
-    {
-        if (!self::isEnabled()) {
+    public static function match(
+        string $reference,
+        string|int|null $storeId = null,
+        ?Carbon $matchedAt = null
+    ): ?array {
+        if (!self::isAvailable()) {
             return null;
         }
 
         try {
-            $query = Reference::byReference($reference)
-                ->where('status', Reference::STATUS_RESERVED);
-
-            if ($storeId !== null) {
-                $query->forStore($storeId);
-            }
-
-            $ref = $query->first();
-
-            if (!$ref) {
+            $record = DB::table(self::TABLE)->where('reference', $reference)->first();
+            if (!$record) {
                 return null;
             }
 
-            // Check if expired
-            if ($ref->expires_at->isPast()) {
-                $ref->update(['status' => Reference::STATUS_EXPIRED]);
-                Log::warning('[VendWeave] Reference expired before match', [
-                    'reference' => $reference,
-                    'expired_at' => $ref->expires_at->toIso8601String(),
+            if ($storeId !== null && (string) $record->store_id !== (string) $storeId) {
+                return null;
+            }
+
+            if ($record->status === self::STATUS_MATCHED || $record->status === self::STATUS_REPLAYED) {
+                return self::markReplay($reference, $storeId);
+            }
+
+            if (!empty($record->expires_at) && now()->greaterThan($record->expires_at)) {
+                DB::table(self::TABLE)->where('reference', $reference)->update([
+                    'status' => self::STATUS_EXPIRED,
+                    'updated_at' => now(),
                 ]);
                 return null;
             }
 
-            $ref->update([
-                'status' => Reference::STATUS_MATCHED,
-                'matched_at' => now(),
+            $matchedAt = $matchedAt ?? now();
+
+            DB::table(self::TABLE)->where('reference', $reference)->update([
+                'status' => self::STATUS_MATCHED,
+                'matched_at' => $matchedAt,
+                'updated_at' => now(),
             ]);
 
-            Log::info('[VendWeave] Reference matched', [
+            self::log('info', '[VendWeave] Reference matched', [
                 'reference' => $reference,
-                'store_id' => $ref->store_id,
-                'order_id' => $ref->order_id,
-                'matched_at' => $ref->matched_at->toIso8601String(),
+                'status' => self::STATUS_MATCHED,
+                'order_id' => $record->order_id,
+                'store_id' => $record->store_id,
+                'expires_at' => $record->expires_at,
+                'matched_at' => $matchedAt,
+                'replay_count' => $record->replay_count,
             ]);
 
-            return $ref;
-        } catch (\Exception $e) {
-            Log::error('[VendWeave] Failed to match reference', [
-                'reference' => $reference,
-                'error' => $e->getMessage(),
-            ]);
+            return (array) DB::table(self::TABLE)->where('reference', $reference)->first();
+        } catch (Throwable $e) {
             return null;
         }
     }
 
-    /**
-     * Expire all overdue reserved references.
-     *
-     * @return int Number of expired references
-     */
+    public static function markReplay(string $reference, string|int|null $storeId = null): ?array
+    {
+        if (!self::isAvailable()) {
+            return null;
+        }
+
+        try {
+            $record = DB::table(self::TABLE)->where('reference', $reference)->first();
+            if (!$record) {
+                return null;
+            }
+
+            if ($storeId !== null && (string) $record->store_id !== (string) $storeId) {
+                return null;
+            }
+
+            DB::table(self::TABLE)->where('reference', $reference)->update([
+                'status' => self::STATUS_REPLAYED,
+                'replay_count' => (int) $record->replay_count + 1,
+                'updated_at' => now(),
+            ]);
+
+            $updated = DB::table(self::TABLE)->where('reference', $reference)->first();
+
+            self::log('warning', '[VendWeave] Reference replay detected', [
+                'reference' => $reference,
+                'status' => self::STATUS_REPLAYED,
+                'order_id' => $updated->order_id ?? null,
+                'store_id' => $updated->store_id ?? null,
+                'expires_at' => $updated->expires_at ?? null,
+                'matched_at' => $updated->matched_at ?? null,
+                'replay_count' => $updated->replay_count ?? null,
+            ]);
+
+            return (array) $updated;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    public static function cancel(string $reference, string|int|null $storeId = null): ?array
+    {
+        if (!self::isAvailable()) {
+            return null;
+        }
+
+        try {
+            $record = DB::table(self::TABLE)->where('reference', $reference)->first();
+            if (!$record) {
+                return null;
+            }
+
+            if ($storeId !== null && (string) $record->store_id !== (string) $storeId) {
+                return null;
+            }
+
+            DB::table(self::TABLE)->where('reference', $reference)->update([
+                'status' => self::STATUS_CANCELLED,
+                'updated_at' => now(),
+            ]);
+
+            $updated = DB::table(self::TABLE)->where('reference', $reference)->first();
+
+            self::log('info', '[VendWeave] Reference cancelled', [
+                'reference' => $reference,
+                'status' => self::STATUS_CANCELLED,
+                'order_id' => $updated->order_id ?? null,
+                'store_id' => $updated->store_id ?? null,
+                'expires_at' => $updated->expires_at ?? null,
+                'matched_at' => $updated->matched_at ?? null,
+                'replay_count' => $updated->replay_count ?? null,
+            ]);
+
+            return (array) $updated;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
     public static function expireOverdue(): int
     {
-        if (!self::isEnabled()) {
+        if (!self::isAvailable()) {
             return 0;
         }
 
         try {
-            $count = Reference::expiredReserved()->update([
-                'status' => Reference::STATUS_EXPIRED,
-            ]);
+            $now = now();
+            $count = DB::table(self::TABLE)
+                ->whereIn('status', [self::STATUS_RESERVED, 'reserved'])
+                ->whereNotNull('expires_at')
+                ->where('expires_at', '<=', $now)
+                ->update([
+                    'status' => self::STATUS_EXPIRED,
+                    'updated_at' => $now,
+                ]);
 
             if ($count > 0) {
-                Log::info('[VendWeave] Expired overdue references', [
-                    'count' => $count,
+                self::log('info', '[VendWeave] References expired', [
+                    'reference' => null,
+                    'status' => self::STATUS_EXPIRED,
+                    'order_id' => null,
+                    'store_id' => null,
+                    'expires_at' => $now,
+                    'matched_at' => null,
+                    'replay_count' => null,
+                    'expired_count' => $count,
                 ]);
             }
 
             return $count;
-        } catch (\Exception $e) {
-            Log::error('[VendWeave] Failed to expire references', [
-                'error' => $e->getMessage(),
-            ]);
+        } catch (Throwable $e) {
             return 0;
         }
     }
 
-    /**
-     * Cancel a reference.
-     *
-     * @param string $reference
-     * @param int|null $storeId
-     * @return bool
-     */
-    public static function cancel(string $reference, ?int $storeId = null): bool
-    {
-        if (!self::isEnabled()) {
-            return false;
-        }
-
-        try {
-            $query = Reference::byReference($reference)
-                ->where('status', Reference::STATUS_RESERVED);
-
-            if ($storeId !== null) {
-                $query->forStore($storeId);
-            }
-
-            $updated = $query->update(['status' => Reference::STATUS_CANCELLED]);
-
-            if ($updated > 0) {
-                Log::info('[VendWeave] Reference cancelled', [
-                    'reference' => $reference,
-                    'store_id' => $storeId,
-                ]);
-            }
-
-            return $updated > 0;
-        } catch (\Exception $e) {
-            Log::error('[VendWeave] Failed to cancel reference', [
-                'reference' => $reference,
-                'error' => $e->getMessage(),
-            ]);
-            return false;
-        }
-    }
-
-    /**
-     * Mark reference as replayed (attempted reuse).
-     *
-     * @param string $reference
-     * @param int|null $storeId
-     * @return Reference|null
-     */
-    public static function markReplay(string $reference, ?int $storeId = null): ?Reference
-    {
-        if (!self::isEnabled()) {
+    public static function validate(
+        string $reference,
+        ?string $orderId = null,
+        ?string $storeId = null
+    ): ?string {
+        if (!self::isAvailable()) {
             return null;
         }
 
         try {
-            $query = Reference::byReference($reference)
-                ->where('status', Reference::STATUS_MATCHED);
-
-            if ($storeId !== null) {
-                $query->forStore($storeId);
-            }
-
-            $ref = $query->first();
-
-            if (!$ref) {
+            $record = DB::table(self::TABLE)->where('reference', $reference)->first();
+            if (!$record) {
                 return null;
             }
 
-            $ref->increment('replay_count');
-            $ref->update(['status' => Reference::STATUS_REPLAYED]);
+            if ($orderId !== null && (string) $record->order_id !== (string) $orderId) {
+                return self::STATUS_REPLAYED;
+            }
 
-            Log::warning('[VendWeave] Replay attack detected', [
-                'reference' => $reference,
-                'store_id' => $ref->store_id,
-                'order_id' => $ref->order_id,
-                'replay_count' => $ref->replay_count,
-            ]);
+            if ($storeId !== null && $record->store_id !== null && (string) $record->store_id !== (string) $storeId) {
+                return self::STATUS_REPLAYED;
+            }
 
-            return $ref;
-        } catch (\Exception $e) {
-            Log::error('[VendWeave] Failed to mark replay', [
-                'reference' => $reference,
-                'error' => $e->getMessage(),
-            ]);
+            return self::normalizeStatus($record->status ?? null);
+        } catch (Throwable $e) {
             return null;
         }
     }
 
-    /**
-     * Validate a reference and return its status.
-     *
-     * @param string $reference
-     * @param int|null $storeId
-     * @return array{valid: bool, status: string|null, reference: Reference|null}
-     */
-    public static function validate(string $reference, ?int $storeId = null): array
+    public static function stats(): array
     {
-        if (!self::isEnabled()) {
-            return ['valid' => true, 'status' => null, 'reference' => null];
+        if (!self::isAvailable()) {
+            return [];
         }
 
         try {
-            $query = Reference::byReference($reference);
+            $rows = DB::table(self::TABLE)
+                ->select('status', DB::raw('count(*) as total'))
+                ->groupBy('status')
+                ->get();
 
-            if ($storeId !== null) {
-                $query->forStore($storeId);
+            $stats = [];
+            foreach ($rows as $row) {
+                $status = self::normalizeStatus($row->status) ?? (string) $row->status;
+                $stats[$status] = ($stats[$status] ?? 0) + (int) $row->total;
             }
 
-            $ref = $query->latest()->first();
-
-            if (!$ref) {
-                return ['valid' => false, 'status' => 'missing', 'reference' => null];
-            }
-
-            // Check status
-            switch ($ref->status) {
-                case Reference::STATUS_RESERVED:
-                    if ($ref->expires_at->isPast()) {
-                        $ref->update(['status' => Reference::STATUS_EXPIRED]);
-                        return ['valid' => false, 'status' => 'expired', 'reference' => $ref];
-                    }
-                    return ['valid' => true, 'status' => 'reserved', 'reference' => $ref];
-
-                case Reference::STATUS_MATCHED:
-                    return ['valid' => false, 'status' => 'replayed', 'reference' => $ref];
-
-                case Reference::STATUS_EXPIRED:
-                    return ['valid' => false, 'status' => 'expired', 'reference' => $ref];
-
-                case Reference::STATUS_REPLAYED:
-                    return ['valid' => false, 'status' => 'replayed', 'reference' => $ref];
-
-                case Reference::STATUS_CANCELLED:
-                    return ['valid' => false, 'status' => 'cancelled', 'reference' => $ref];
-
-                default:
-                    return ['valid' => false, 'status' => 'unknown', 'reference' => $ref];
-            }
-        } catch (\Exception $e) {
-            Log::error('[VendWeave] Failed to validate reference', [
-                'reference' => $reference,
-                'error' => $e->getMessage(),
-            ]);
-            // Graceful fallback
-            return ['valid' => true, 'status' => null, 'reference' => null];
+            return $stats;
+        } catch (Throwable $e) {
+            return [];
         }
     }
 
-    /**
-     * Get reference statistics for a store.
-     *
-     * @param int $storeId
-     * @return array
-     */
-    public static function stats(int $storeId): array
+    private static function normalizeStatus(?string $status): ?string
     {
-        if (!self::isEnabled()) {
-            return [
-                'enabled' => false,
-                'total_reserved' => 0,
-                'total_matched' => 0,
-                'total_expired' => 0,
-                'total_replayed' => 0,
-                'total_cancelled' => 0,
-                'conversion_rate' => 0,
-            ];
+        if ($status === null) {
+            return null;
+        }
+
+        $key = strtolower($status);
+        return self::STATUS_MAP[$key] ?? strtoupper($status);
+    }
+
+    private static function isEnabled(): bool
+    {
+        return (bool) config('vendweave.reference_governance.enabled', true);
+    }
+
+    private static function ttlMinutes(): int
+    {
+        return (int) config('vendweave.reference_governance.ttl_minutes', config('vendweave.reference_ttl', 30));
+    }
+
+    private static function log(string $level, string $message, array $context = []): void
+    {
+        if (!class_exists(self::class)) {
+            return;
+        }
+
+        if (!config('vendweave.logging.enabled', true)) {
+            return;
         }
 
         try {
-            $reserved = Reference::forStore($storeId)->where('status', Reference::STATUS_RESERVED)->count();
-            $matched = Reference::forStore($storeId)->where('status', Reference::STATUS_MATCHED)->count();
-            $expired = Reference::forStore($storeId)->where('status', Reference::STATUS_EXPIRED)->count();
-            $replayed = Reference::forStore($storeId)->where('status', Reference::STATUS_REPLAYED)->count();
-            $cancelled = Reference::forStore($storeId)->where('status', Reference::STATUS_CANCELLED)->count();
-
-            $total = $reserved + $matched + $expired + $replayed + $cancelled;
-            $conversionRate = $total > 0 ? round(($matched / $total) * 100, 2) : 0;
-
-            return [
-                'enabled' => true,
-                'total_reserved' => $reserved,
-                'total_matched' => $matched,
-                'total_expired' => $expired,
-                'total_replayed' => $replayed,
-                'total_cancelled' => $cancelled,
-                'conversion_rate' => $conversionRate,
-            ];
-        } catch (\Exception $e) {
-            Log::error('[VendWeave] Failed to get stats', [
-                'store_id' => $storeId,
-                'error' => $e->getMessage(),
-            ]);
-            return [
-                'enabled' => false,
-                'error' => $e->getMessage(),
-            ];
+            Log::channel(config('vendweave.logging.channel', 'stack'))
+                ->log($level, $message, $context);
+        } catch (Throwable $e) {
+            // Swallow logging failures to keep package safe
         }
     }
 }

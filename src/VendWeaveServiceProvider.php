@@ -5,7 +5,6 @@ namespace VendWeave\Gateway;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use VendWeave\Gateway\Contracts\PaymentGatewayInterface;
-use VendWeave\Gateway\Console\Commands\ExpireReferencesCommand;
 use VendWeave\Gateway\Services\OrderAdapter;
 use VendWeave\Gateway\Services\PaymentManager;
 use VendWeave\Gateway\Services\TransactionVerifier;
@@ -64,6 +63,7 @@ class VendWeaveServiceProvider extends ServiceProvider
         $this->registerRoutes();
         $this->registerViews();
         $this->registerRateLimiting();
+        $this->registerMigrations();
         $this->registerCommands();
     }
 
@@ -146,13 +146,24 @@ class VendWeaveServiceProvider extends ServiceProvider
     }
 
     /**
-     * Register console commands.
+     * Register package migrations.
+     */
+    protected function registerMigrations(): void
+    {
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+    }
+
+    /**
+     * Register package commands.
      */
     protected function registerCommands(): void
     {
         if ($this->app->runningInConsole()) {
             $this->commands([
-                ExpireReferencesCommand::class,
+                \VendWeave\Gateway\Console\ExpireReferencesCommand::class,
+                \VendWeave\Gateway\Console\GenerateSettlementCommand::class,
+                \VendWeave\Gateway\Console\ExportLedgerCommand::class,
+                \VendWeave\Gateway\Console\ReconcileCommand::class,
             ]);
         }
     }

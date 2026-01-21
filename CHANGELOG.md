@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-01-22
+
+### 💼 Financial Reconciliation Engine
+
+Adds accounting-grade reconciliation with financial records, settlements, and ledger exports. All migrations are optional and auto-detected; Phase-5 behavior remains when tables are missing.
+
+### ✨ Added
+
+- Financial tables (publishable):
+  - `vendweave_financial_records`
+  - `vendweave_settlements`
+  - `vendweave_ledger_exports`
+- Services:
+  - `FinancialRecordManager`
+  - `SettlementEngine`
+  - `LedgerExporter`
+- Artisan commands:
+  - `vendweave:generate-settlement`
+  - `vendweave:export-ledger`
+  - `vendweave:reconcile`
+- Config flag:
+  - `financial_reconciliation.enabled`
+
+### 🔄 Changed
+
+- `TransactionVerifier` now conditionally creates financial records when tables exist.
+
+---
+
+## [1.6.0] - 2026-01-21
+
+### 🧭 Reference Governance Engine
+
+Adds lifecycle governance for payment references with replay prevention, expiry scheduling, and audit-ready logging. Migration is optional; the SDK safely falls back to Phase-4 behavior if the table is missing.
+
+### ✨ Added
+
+- `ReferenceGovernor` service with lifecycle methods:
+  - `reserve`, `match`, `markReplay`, `cancel`, `expireOverdue`, `validate`, `stats`
+- Reference governance migration (publishable):
+  - `vendweave_references` table
+- Artisan command:
+  - `vendweave:expire-references`
+- Config flags:
+  - `reference_governance.enabled`
+  - `reference_governance.ttl_minutes`
+
+### 🔄 Changed
+
+- `TransactionVerifier` now conditionally enforces reference governance when the table exists.
+
+---
+
 ## [1.2.0] - 2026-01-14
 
 ### 🧠 Intelligent Amount Detection

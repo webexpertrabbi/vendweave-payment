@@ -10,6 +10,8 @@ use VendWeave\Gateway\Exceptions\TransactionAlreadyUsedException;
 use VendWeave\Gateway\Exceptions\TransactionExpiredException;
 use VendWeave\Gateway\Exceptions\TransactionNotFoundException;
 use Illuminate\Support\Facades\Log;
+use VendWeave\Gateway\Services\ReferenceGovernor;
+use VendWeave\Gateway\Services\FinancialRecordManager;
 
 /**
  * Transaction verification service.
@@ -53,7 +55,13 @@ class TransactionVerifier
                 $expectedReference
             );
 
-            return $this->processResponse($response, $expectedAmount, $expectedMethod, $expectedReference);
+            return $this->processResponse(
+                $response,
+                $expectedAmount,
+                $expectedMethod,
+                $orderId,
+                $expectedReference
+            );
 
         } catch (ApiConnectionException $e) {
             return VerificationResult::failed(
@@ -76,6 +84,7 @@ class TransactionVerifier
         array $response,
         float $expectedAmount,
         string $expectedMethod,
+        string $orderId,
         ?string $expectedReference = null
     ): VerificationResult {
         // Handle HTTP status codes
@@ -113,6 +122,7 @@ class TransactionVerifier
                     $response,
                     $expectedAmount,
                     $expectedMethod,
+                    $orderId,
                     $expectedReference
                 );
 
@@ -137,6 +147,7 @@ class TransactionVerifier
         array $response,
         float $expectedAmount,
         string $expectedMethod,
+        string $orderId,
         ?string $expectedReference = null
     ): VerificationResult {
         $trxId = $response['trx_id'] ?? null;
@@ -311,6 +322,56 @@ class TransactionVerifier
             return VerificationResult::failed(
                 'METHOD_MISMATCH',
                 "Payment method mismatch: expected {$expectedMethod}, received {$receivedMethod}"
+            );
+        }
+
+        // 4. Reference governance (Phase-5) - only if migration exists
+        $referenceForGovernance = $receivedReference ?? $expectedReference ?? $trxId ?? null;
+        if ($referenceForGovernance !== null && class_exists(ReferenceGovernor::class) && ReferenceGovernor::isAvailable()) {
+            $governedStatus = ReferenceGovernor::validate(
+                $referenceForGovernance,
+                $orderId,
+                $receivedStoreSlug ?? $expectedStoreSlug
+            );
+
+            switch ($governedStatus) {
+                case ReferenceGovernor::STATUS_MATCHED:
+                case ReferenceGovernor::STATUS_REPLAYED:
+                    return VerificationResult::failed(
+                        'REFERENCE_REPLAY',
+                        "Reference {$trxId} has already been used"
+                    );
+
+                case ReferenceGovernor::STATUS_EXPIRED:
+                    return VerificationResult::failed(
+                        'REFERENCE_EXPIRED',
+                        "Reference {$trxId} has expired"
+                    );
+
+                case ReferenceGovernor::STATUS_CANCELLED:
+                    return VerificationResult::failed(
+                        'REFERENCE_CANCELLED',
+                        "Reference {$trxId} was cancelled"
+                    );
+
+                case ReferenceGovernor::STATUS_RESERVED:
+                    ReferenceGovernor::match($referenceForGovernance);
+                    break;
+            }
+        }
+
+        // 5. Financial reconciliation (Phase-6) - only if migration exists
+        if (class_exists(FinancialRecordManager::class) && FinancialRecordManager::isAvailable()) {
+            $financialReference = $receivedReference ?? $expectedReference ?? $trxId ?? $orderId;
+            FinancialRecordManager::createFromReference(
+                $financialReference,
+                $orderId,
+                $receivedStoreSlug ?? $expectedStoreSlug,
+                $expectedAmount,
+                $receivedAmount,
+                $receivedMethod ?: $expectedMethod,
+                $trxId,
+                $response
             );
         }
 

@@ -1,6 +1,6 @@
 {
   "name": "vendweave/payment",
-  "version": "1.2.0",
+  "version": "1.7.0",
   "description": "Production-grade Laravel payment gateway SDK for VendWeave POS - Auto-adapts to your system",
   "type": "library",
   "keywords": [

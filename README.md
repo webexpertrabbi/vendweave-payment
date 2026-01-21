@@ -2,7 +2,7 @@
 
 The official, production-ready Laravel SDK for the VendWeave POS Manual Payment Gateway. Seamlessly verify bKash, Nagad, Rocket, and Upay transactions by syncing directly with your VendWeave POS store.
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](COMPOSER.json)
+[![Version](https://img.shields.io/badge/version-1.7.0-blue.svg)](COMPOSER.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -185,6 +185,48 @@ php artisan vendor:publish --tag=vendweave-views
 | `401 Unauthorized` | Invalid Credentials      | Use "General API Credentials" from dashboard, NOT "Manual Payment Keys". |
 
 ---
+
+## 🧭 Reference Governance Engine
+
+The SDK includes a **Reference Governance Engine** to protect each order reference from replay abuse and to provide auditability.
+
+### Lifecycle
+
+References move through a strict lifecycle to prevent reuse:
+
+**RESERVED → MATCHED → REPLAYED / CANCELLED → EXPIRED**
+
+- **RESERVED**: A reference is reserved for a specific order.
+- **MATCHED**: A POS transaction is matched to the reference.
+- **REPLAYED**: A duplicate attempt was detected after match.
+- **CANCELLED**: Reference invalidated before match.
+- **EXPIRED**: Time window exceeded without a match.
+
+### Replay Prevention
+
+Once a reference is **MATCHED**, further attempts are blocked and return replay errors. This prevents double spending and repeated confirmations.
+
+### Expiry & Scheduler
+
+References auto-expire after the configured TTL. Use the scheduler command to mark them as **EXPIRED**:
+
+```
+php artisan vendweave:expire-references
+```
+
+### Analytics & Audit Trail
+
+Reference activity is logged with fields like:
+
+- `reference`
+- `status`
+- `order_id`
+- `store_id`
+- `expires_at`
+- `matched_at`
+- `replay_count`
+
+These logs support analytics, reconciliation, and audit readiness.
 
 ## 📜 License
 

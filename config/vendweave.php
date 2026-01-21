@@ -158,6 +158,35 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Reference Governance Engine
+    |--------------------------------------------------------------------------
+    |
+    | Phase-5 feature flag and reference lifecycle settings.
+    | If migration/table is missing, SDK falls back to Phase-4 behavior.
+    |
+    */
+
+    'reference_governance' => [
+        'enabled' => env('VENDWEAVE_REFERENCE_GOVERNANCE', true),
+        'ttl_minutes' => env('VENDWEAVE_REFERENCE_TTL', 15),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Financial Reconciliation Engine
+    |--------------------------------------------------------------------------
+    |
+    | Phase-6 feature flag. If financial tables are missing, SDK falls back
+    | to Phase-5 behavior without breaking the host app.
+    |
+    */
+
+    'financial_reconciliation' => [
+        'enabled' => env('VENDWEAVE_FINANCIAL_RECONCILIATION', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Logging
     |--------------------------------------------------------------------------
     |

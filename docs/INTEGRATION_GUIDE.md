@@ -269,6 +269,50 @@ protected $listen = [
 
 ---
 
+## 🧭 Reference Governance Engine
+
+VendWeave SDK এখন **Reference Governance Engine** ব্যবহার করে reference replay, expiry, এবং audit tracking নিশ্চিত করে।
+
+### ✅ Lifecycle
+
+```
+RESERVED → MATCHED → REPLAYED / CANCELLED → EXPIRED
+```
+
+- **RESERVED**: order এর জন্য reference reserve হয়
+- **MATCHED**: POS payment reference match হলে
+- **REPLAYED**: match হওয়ার পরে duplicate attempt ধরা পড়লে
+- **CANCELLED**: match হওয়ার আগেই cancel হলে
+- **EXPIRED**: নির্দিষ্ট সময়ের মধ্যে match না হলে
+
+### 🛡️ Replay Prevention
+
+Reference একবার **MATCHED** হলে পরের attempt স্বয়ংক্রিয়ভাবে block হবে এবং replay error দিবে।
+
+### ⏱️ Expiry Command
+
+Expiry চালাতে:
+
+```bash
+php artisan vendweave:expire-references
+```
+
+### 📊 Analytics & Audit Trail
+
+সব গুরুত্বপূর্ণ log field থাকবে:
+
+- `reference`
+- `status`
+- `order_id`
+- `store_id`
+- `expires_at`
+- `matched_at`
+- `replay_count`
+
+এই data analytics, reconciliation, এবং audit trail এ কাজে লাগবে।
+
+---
+
 ## 🎨 Custom Success/Failure Routes
 
 ```php
