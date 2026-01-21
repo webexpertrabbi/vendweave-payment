@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.0] - 2026-01-22
+
+### 🏅 Certified Integration Badge System
+
+Introduces an official certification badge system to validate, govern, and publicly verify VendWeave SDK integrations. Badges are issued by VendWeave Authority and can be embedded on websites/apps.
+
+### ✨ Added
+
+- **CertificationManager** service with full badge lifecycle management:
+  - `status()` - Get current certification status
+  - `detectQualifiedBadge()` - Auto-detect qualification tier
+  - `requestCertification()` - Request new certification
+  - `verifyBadge()` - Verify badge hash
+  - `renewCertification()` - Renew before expiry
+  - `getBadgeHtml()` - Generate embed code
+
+- **Badge Tiers** (hierarchical):
+  - `VW-CERT-BASE` - Base SDK integration
+  - `VW-CERT-REF` - Reference strict mode enabled
+  - `VW-CERT-GOV` - Governance engine active
+  - `VW-CERT-FIN` - Financial reconciliation enabled
+  - `VW-CERT-CUR` - Multi-currency normalization (highest)
+
+- **Facade Methods**:
+  - `VendWeave::certificationStatus()`
+  - `VendWeave::requestCertification($domain, $project)`
+  - `VendWeave::verifyBadge($hash)`
+  - `VendWeave::renewCertification()`
+  - `VendWeave::getBadgeHtml($size)`
+  - `VendWeave::detectQualifiedBadge()`
+  - `VendWeave::getFeatureSnapshot()`
+
+- **Helper Methods**:
+  - `VendWeaveHelper::getCertificationBadge($size)`
+  - `VendWeaveHelper::getCertificationStatus()`
+  - `VendWeaveHelper::detectCertificationLevel()`
+
+- **Artisan Commands**:
+  - `vendweave:cert-status` - Check certification status
+  - `vendweave:cert-request` - Request new certification
+  - `vendweave:cert-verify {hash}` - Verify badge hash
+  - `vendweave:cert-renew` - Renew certification
+
+- **Config** (`certification.*`):
+  - `enabled`, `domain`, `project_name`
+  - `cache_ttl`, `auto_renew`
+  - `authority_url`, `cdn_url`, `verify_url`
+
+- **Documentation**:
+  - `CERTIFICATION_API_CONTRACT.md` - Authority API specification
+
+### 🔒 Security
+
+- HMAC-SHA256 signed verification hashes
+- Domain-locked badges
+- 1-year expiry with renewal
+- Revocation overrides all cache
+- No sensitive data in badge payload
+
+### 📦 Package Safety
+
+- Certification is **disabled by default**
+- All methods return `null` safely when disabled
+- No hard dependency on Authority API
+- Phase 1-7 functionality unaffected
+
+---
+
 ## [1.8.0] - 2026-01-22
 
 ### 💱 Multi-Currency Normalization & Cross-Gateway Reconciliation

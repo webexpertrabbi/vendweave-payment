@@ -160,10 +160,19 @@ class VendWeaveServiceProvider extends ServiceProvider
     {
         if ($this->app->runningInConsole()) {
             $this->commands([
+                // Phase-5: Reference Governance
                 \VendWeave\Gateway\Console\ExpireReferencesCommand::class,
+                
+                // Phase-6: Financial Reconciliation
                 \VendWeave\Gateway\Console\GenerateSettlementCommand::class,
                 \VendWeave\Gateway\Console\ExportLedgerCommand::class,
                 \VendWeave\Gateway\Console\ReconcileCommand::class,
+                
+                // Phase-8: Certification Badge System
+                \VendWeave\Gateway\Console\CertStatusCommand::class,
+                \VendWeave\Gateway\Console\CertRequestCommand::class,
+                \VendWeave\Gateway\Console\CertVerifyCommand::class,
+                \VendWeave\Gateway\Console\CertRenewCommand::class,
             ]);
         }
     }

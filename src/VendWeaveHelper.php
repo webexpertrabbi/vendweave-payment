@@ -3,6 +3,7 @@
 namespace VendWeave\Gateway;
 
 use Illuminate\Support\Facades\Session;
+use VendWeave\Gateway\Services\CertificationManager;
 use VendWeave\Gateway\Services\ReferenceGovernor;
 
 /**
@@ -119,5 +120,38 @@ class VendWeaveHelper
     public static function isValidPaymentMethod(string $method): bool
     {
         return array_key_exists(strtolower($method), self::getPaymentMethods());
+    }
+
+    /**
+     * Get certification badge HTML embed code.
+     * 
+     * Returns empty string if certification is disabled or not active.
+     *
+     * @param string $size Badge size: small, medium, large
+     * @return string HTML embed code or empty string
+     */
+    public static function getCertificationBadge(string $size = 'medium'): string
+    {
+        return CertificationManager::getBadgeHtml($size);
+    }
+
+    /**
+     * Get current certification status.
+     * 
+     * @return array|null Certification status or null if unavailable
+     */
+    public static function getCertificationStatus(): ?array
+    {
+        return CertificationManager::status();
+    }
+
+    /**
+     * Detect which certification badge the current integration qualifies for.
+     * 
+     * @return string Badge code (e.g., VW-CERT-FIN)
+     */
+    public static function detectCertificationLevel(): string
+    {
+        return CertificationManager::detectQualifiedBadge();
     }
 }

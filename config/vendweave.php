@@ -405,5 +405,70 @@ return [
             'tax' => ['tax', 'tax_amount', 'vat'],
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Certification Badge System (Phase-8)
+    |--------------------------------------------------------------------------
+    |
+    | Enable official VendWeave certification badges to validate and publicly
+    | verify your integration status. Badges are issued by VendWeave Authority
+    | and can be embedded on your website/app.
+    |
+    | Badge Tiers:
+    | - VW-CERT-BASE: SDK integrated & verified
+    | - VW-CERT-REF:  Reference strict mode enabled
+    | - VW-CERT-GOV:  Reference governance engine active
+    | - VW-CERT-FIN:  Financial reconciliation enabled
+    | - VW-CERT-CUR:  Multi-currency normalization enabled
+    |
+    */
+
+    'certification' => [
+        /*
+        | Enable/disable the certification system.
+        | When disabled, all certification methods return null safely.
+        */
+        'enabled' => env('VENDWEAVE_CERTIFICATION_ENABLED', false),
+
+        /*
+        | Domain or App ID for certification.
+        | This must match the registered domain in VendWeave Dashboard.
+        */
+        'domain' => env('VENDWEAVE_CERT_DOMAIN'),
+
+        /*
+        | Human-readable project name for certification display.
+        */
+        'project_name' => env('VENDWEAVE_CERT_PROJECT'),
+
+        /*
+        | Cache TTL for certification status (in seconds).
+        | Default: 1 hour. Set lower for more frequent verification.
+        */
+        'cache_ttl' => env('VENDWEAVE_CERT_CACHE_TTL', 3600),
+
+        /*
+        | Auto-renew certification before expiry.
+        | When true, SDK will attempt renewal when 30 days remain.
+        */
+        'auto_renew' => env('VENDWEAVE_CERT_AUTO_RENEW', true),
+
+        /*
+        | VendWeave Authority API URL for certification requests.
+        | Default uses production endpoint.
+        */
+        'authority_url' => env('VENDWEAVE_CERT_AUTHORITY_URL', 'https://vendweave.com/api'),
+
+        /*
+        | CDN URL for badge assets (SVG/PNG).
+        */
+        'cdn_url' => env('VENDWEAVE_CERT_CDN_URL', 'https://cdn.vendweave.com/badges'),
+
+        /*
+        | Verification page URL base.
+        */
+        'verify_url' => env('VENDWEAVE_CERT_VERIFY_URL', 'https://vendweave.com/verify'),
+    ],
 ];
 
