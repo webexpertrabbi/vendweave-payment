@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.0] - 2026-01-22
+
+### 💱 Multi-Currency Normalization & Cross-Gateway Reconciliation
+
+Adds base-currency normalization, exchange rate support, and cross-gateway reconciliation with optional schema updates. Falls back safely when currency fields are missing.
+
+### ✨ Added
+
+- Currency services:
+  - `CurrencyRateProvider`
+  - `CurrencyNormalizer`
+  - `CrossGatewayReconciler`
+- Optional currency fields on financial records:
+  - `currency`, `base_currency`, `exchange_rate`, `normalized_amount`
+- Config:
+  - `base_currency`, `exchange_rate_source`, `static_rates`
+
+### 🔄 Changed
+
+- Financial records capture normalized amounts when available.
+- Settlement and ledger exports include normalized data when columns exist.
+
+---
+
 ## [1.7.0] - 2026-01-22
 
 ### 💼 Financial Reconciliation Engine

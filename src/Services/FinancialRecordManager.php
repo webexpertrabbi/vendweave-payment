@@ -50,8 +50,30 @@ class FinancialRecordManager
             $record = DB::table(self::TABLE)->where('reference', $reference)->first();
             $status = self::determineStatus($amountExpected, $amountPaid, $context);
 
+            $currency = $context['currency'] ?? config('vendweave.base_currency', 'USD');
+            $baseCurrency = $context['base_currency'] ?? config('vendweave.base_currency', 'USD');
+            $normalized = CurrencyNormalizer::normalize($amountPaid, $currency, $baseCurrency);
+
+            $exchangeRate = $normalized['exchange_rate'] ?? null;
+            $normalizedAmount = $normalized['normalized_amount'] ?? null;
+            $currencyColumns = self::currencyColumnsAvailable();
+
+            $currencyPayload = [];
+            if ($currencyColumns['currency']) {
+                $currencyPayload['currency'] = $currency;
+            }
+            if ($currencyColumns['base_currency']) {
+                $currencyPayload['base_currency'] = $baseCurrency;
+            }
+            if ($currencyColumns['exchange_rate']) {
+                $currencyPayload['exchange_rate'] = $exchangeRate;
+            }
+            if ($currencyColumns['normalized_amount']) {
+                $currencyPayload['normalized_amount'] = $normalizedAmount;
+            }
+
             if ($record) {
-                DB::table(self::TABLE)->where('reference', $reference)->update([
+                DB::table(self::TABLE)->where('reference', $reference)->update(array_merge([
                     'amount_expected' => $amountExpected,
                     'amount_paid' => $amountPaid,
                     'status' => $status,
@@ -59,9 +81,9 @@ class FinancialRecordManager
                     'trx_id' => $trxId,
                     'confirmed_at' => $status === self::STATUS_CONFIRMED ? now() : $record->confirmed_at,
                     'updated_at' => now(),
-                ]);
+                ], $currencyPayload));
             } else {
-                DB::table(self::TABLE)->insert([
+                DB::table(self::TABLE)->insert(array_merge([
                     'reference' => $reference,
                     'order_id' => $orderId,
                     'store_slug' => $storeSlug,
@@ -74,7 +96,7 @@ class FinancialRecordManager
                     'created_at' => now(),
                     'updated_at' => now(),
                     'confirmed_at' => $status === self::STATUS_CONFIRMED ? now() : null,
-                ]);
+                ], $currencyPayload));
             }
 
             $updated = DB::table(self::TABLE)->where('reference', $reference)->first();
@@ -218,6 +240,25 @@ class FinancialRecordManager
                 ->log($level, $message, $context);
         } catch (Throwable $e) {
             // Swallow logging failures to keep package safe
+        }
+    }
+
+    private static function currencyColumnsAvailable(): array
+    {
+        try {
+            return [
+                'currency' => Schema::hasColumn(self::TABLE, 'currency'),
+                'base_currency' => Schema::hasColumn(self::TABLE, 'base_currency'),
+                'exchange_rate' => Schema::hasColumn(self::TABLE, 'exchange_rate'),
+                'normalized_amount' => Schema::hasColumn(self::TABLE, 'normalized_amount'),
+            ];
+        } catch (Throwable $e) {
+            return [
+                'currency' => false,
+                'base_currency' => false,
+                'exchange_rate' => false,
+                'normalized_amount' => false,
+            ];
         }
     }
 }

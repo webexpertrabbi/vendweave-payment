@@ -187,6 +187,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Multi-Currency Normalization (Phase-7)
+    |--------------------------------------------------------------------------
+    |
+    | Base currency is the unified reporting currency.
+    | Exchange rates can be fetched from API or static config.
+    |
+    */
+
+    'base_currency' => env('VENDWEAVE_BASE_CURRENCY', 'USD'),
+
+    'exchange_rate_source' => env('VENDWEAVE_EXCHANGE_SOURCE', 'static'), // api|static
+
+    'static_rates' => [
+        'BDT' => 0.0091,
+        'EUR' => 1.08,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Logging
     |--------------------------------------------------------------------------
     |

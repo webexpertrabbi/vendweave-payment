@@ -16,6 +16,10 @@ return new class extends Migration
                 $table->string('store_slug')->nullable();
                 $table->decimal('amount_expected', 12, 2)->default(0);
                 $table->decimal('amount_paid', 12, 2)->default(0);
+                $table->string('currency')->nullable();
+                $table->string('base_currency')->nullable();
+                $table->decimal('exchange_rate', 18, 8)->nullable();
+                $table->decimal('normalized_amount', 18, 8)->nullable();
                 $table->string('status')->index();
                 $table->string('gateway')->nullable();
                 $table->string('trx_id')->nullable();

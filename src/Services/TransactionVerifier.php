@@ -155,6 +155,7 @@ class TransactionVerifier
         $receivedMethod = strtolower($response['payment_method'] ?? '');
         $receivedStoreSlug = $response['store_slug'] ?? null;
         $expectedStoreSlug = $this->apiClient->getStoreSlug();
+        $receivedCurrency = $response['currency'] ?? null;
 
         // 1. Validate store scope isolation (SECURITY CHECK with graceful degradation)
         if ($expectedStoreSlug !== null && $receivedStoreSlug !== null) {
@@ -371,7 +372,10 @@ class TransactionVerifier
                 $receivedAmount,
                 $receivedMethod ?: $expectedMethod,
                 $trxId,
-                $response
+                array_merge($response, [
+                    'currency' => $receivedCurrency ?? config('vendweave.base_currency', 'USD'),
+                    'base_currency' => config('vendweave.base_currency', 'USD'),
+                ])
             );
         }
 

@@ -74,8 +74,16 @@ class SettlementEngine
 
             $settlementId = $filters['settlement_id'] ?? self::generateSettlementId($filters['date'] ?? null);
 
-            $totalExpected = $records->sum('amount_expected');
-            $totalPaid = $records->sum('amount_paid');
+            $useNormalization = Schema::hasColumn(FinancialRecordManager::TABLE, 'normalized_amount')
+                && Schema::hasColumn(FinancialRecordManager::TABLE, 'exchange_rate');
+
+            $totalExpected = $useNormalization
+                ? $records->sum(fn ($record) => (float) $record->amount_expected * (float) ($record->exchange_rate ?? 1))
+                : $records->sum('amount_expected');
+
+            $totalPaid = $useNormalization
+                ? $records->sum(fn ($record) => (float) ($record->normalized_amount ?? $record->amount_paid))
+                : $records->sum('amount_paid');
 
             DB::table(self::TABLE)->insert([
                 'settlement_id' => $settlementId,

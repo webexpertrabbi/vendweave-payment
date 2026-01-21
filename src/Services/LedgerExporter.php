@@ -82,6 +82,10 @@ class LedgerExporter
                 $row['store_slug'],
                 $row['amount_expected'],
                 $row['amount_paid'],
+                $row['currency'] ?? null,
+                $row['base_currency'] ?? null,
+                $row['exchange_rate'] ?? null,
+                $row['normalized_amount'] ?? null,
                 $row['status'],
                 $row['gateway'],
                 $row['trx_id'],
@@ -121,12 +125,28 @@ class LedgerExporter
                 $query->whereDate('created_at', $filters['date']);
             }
 
-            $records = $query->get([
+            $columns = [
                 'reference',
                 'order_id',
                 'store_slug',
                 'amount_expected',
                 'amount_paid',
+            ];
+
+            if (Schema::hasColumn(FinancialRecordManager::TABLE, 'currency')) {
+                $columns[] = 'currency';
+            }
+            if (Schema::hasColumn(FinancialRecordManager::TABLE, 'base_currency')) {
+                $columns[] = 'base_currency';
+            }
+            if (Schema::hasColumn(FinancialRecordManager::TABLE, 'exchange_rate')) {
+                $columns[] = 'exchange_rate';
+            }
+            if (Schema::hasColumn(FinancialRecordManager::TABLE, 'normalized_amount')) {
+                $columns[] = 'normalized_amount';
+            }
+
+            $columns = array_merge($columns, [
                 'status',
                 'gateway',
                 'trx_id',
@@ -134,6 +154,8 @@ class LedgerExporter
                 'created_at',
                 'confirmed_at',
             ]);
+
+            $records = $query->get($columns);
 
             return $records->map(fn ($row) => (array) $row)->toArray();
         } catch (Throwable $e) {
@@ -166,10 +188,12 @@ class LedgerExporter
                 $recordsQuery->whereDate('created_at', $filters['date']);
             }
 
-            $recordsQuery->update([
-                'ledger_exported' => true,
-                'updated_at' => now(),
-            ]);
+            if (Schema::hasColumn(FinancialRecordManager::TABLE, 'ledger_exported')) {
+                $recordsQuery->update([
+                    'ledger_exported' => true,
+                    'updated_at' => now(),
+                ]);
+            }
 
             DB::table(self::TABLE)->insert([
                 'export_format' => $format,
