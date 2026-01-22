@@ -1,128 +1,68 @@
 # VendWeave Laravel Payment SDK
 
-The official, production-ready Laravel SDK for the VendWeave POS Manual Payment Gateway. Seamlessly verify bKash, Nagad, Rocket, and Upay transactions by syncing directly with your VendWeave POS store.
+[![Latest Version](https://img.shields.io/packagist/v/vendweave/payment.svg)](https://packagist.org/packages/vendweave/payment)
+[![PHP Version](https://img.shields.io/badge/php-%3E%3D8.1-8892BF.svg)](https://php.net/)
+[![Laravel Version](https://img.shields.io/badge/laravel-10.x%20%7C%2011.x%20%7C%2012.x-FF2D20.svg)](https://laravel.com/)
 
-[![Version](https://img.shields.io/badge/version-1.9.1-blue.svg)](COMPOSER.json)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
----
-
-## 🚀 Getting Started
-
-To use this SDK, you must have an active store on VendWeave.
-
-**👉 [Create your Store Account](https://vendweave.com/register-store)** (Free test mode available)
+Protocol-aligned Laravel SDK for VendWeave POS payment verification.
 
 ---
 
-## ✨ Key Features
-
-- **🔒 Store Isolation:** Each transaction is verified against your specific Store Slug, ensuring cross-store security.
-- **⚡ Real-time Verification:** Uses smart polling (every 2.5s) to detect payment confirmation instantly.
-- **💰 Exact Amount Matching:** Zero-tolerance verification prevents partial payment fraud.
-- **🎨 Configurable UI:** Built-in, responsive verification page (Mobile First) that adapts to your theme.
-- **🔌 Auto-Adaptation:** Automatically detects your Order model structure and adapts accordingly.
-- **🛡️ Graceful Degradation:** Smartly handles API variations and missing fields without breaking the flow.
-- **🏅 Certification Badges:** Official badges to prove your integration meets VendWeave standards.
-
----
-
-## 📦 Installation
-
-Requires PHP 8.1+ and Laravel 10 or 11.
+## Installation
 
 ```bash
 composer require vendweave/payment
 ```
 
-Recommended Composer constraint:
-
-```
-vendweave/payment: ^1.9
-```
-
----
-
-## ⚙️ Configuration
-
-### 1. Publish Configuration
-
-Publish the package configuration to `config/vendweave.php`:
-
 ```bash
 php artisan vendor:publish --tag=vendweave-config
 ```
 
-### 2. Set Credentials
+## Configuration
 
-Add your store credentials to your `.env` file. You can find these in your **[VendWeave Dashboard](https://vendweave.com/dashboard) > Settings > API Credentials**.
+Add credentials to `.env`:
 
 ```env
-# Required Credentials
-VENDWEAVE_API_KEY=your_general_api_key
-VENDWEAVE_API_SECRET=your_general_api_secret
-VENDWEAVE_STORE_SLUG=your_unique_store_slug
+VENDWEAVE_API_KEY=your_api_key
+VENDWEAVE_API_SECRET=your_api_secret
+VENDWEAVE_STORE_SLUG=your_store_slug
 VENDWEAVE_API_ENDPOINT=https://vendweave.com/api
 
-# Optional: Disable SSL check for Localhost ONLY
-VENDWEAVE_VERIFY_SSL=true
-```
-
-### 3. Configure Payment Numbers
-
-Display your personal or merchant numbers on the verification page. These are editable in `.env`:
-
-```env
+# Payment Numbers (displayed on verification page)
 VENDWEAVE_BKASH_NUMBER="017XXXXXXXX"
 VENDWEAVE_NAGAD_NUMBER="018XXXXXXXX"
-VENDWEAVE_ROCKET_NUMBER="019XXXXXXXX"
-VENDWEAVE_UPAY_NUMBER="016XXXXXXXX"
 ```
 
----
+## Quick Start
 
-## 🛠 Integration Guide
-
-### Step 1: Handle Checkout
-
-When a user places an order, create the order in your database and verify it using VendWeave.
+### 1. Checkout → Redirect
 
 ```php
 use Illuminate\Support\Facades\Session;
-use App\Models\Order;
 
-public function store(Request $request)
+public function checkout(Request $request)
 {
-    // 1. Create Order (Status: pending)
     $order = Order::create([
         'total' => 1250.00,
         'status' => 'pending',
-        'payment_method' => $request->payment_method, // e.g., 'bkash'
+        'payment_method' => $request->payment_method,
     ]);
 
-    // 2. Store Verification Data in Session
-    // This allows the SDK to access order details without passing sensitive data in URLs
     Session::put("vendweave_order_{$order->id}", [
         'amount' => $order->total,
         'payment_method' => $order->payment_method,
     ]);
 
-    // 3. Redirect to VendWeave Verification Page
     return redirect()->route('vendweave.verify', ['order' => $order->id]);
 }
 ```
 
-### Step 2: Listen for Results
-
-The SDK fires events when a payment is **Verified** or **Failed**. Register these listeners in your `EventServiceProvider`.
-
-**File:** `app/Providers/EventServiceProvider.php`
+### 2. Listen for Events
 
 ```php
+// app/Providers/EventServiceProvider.php
 use VendWeave\Gateway\Events\PaymentVerified;
 use VendWeave\Gateway\Events\PaymentFailed;
-use App\Listeners\OnPaymentSuccess;
-use App\Listeners\OnPaymentFailed;
 
 protected $listen = [
     PaymentVerified::class => [OnPaymentSuccess::class],
@@ -130,111 +70,38 @@ protected $listen = [
 ];
 ```
 
-### Step 3: Update Order Status
-
-Create the listener to update your database.
-
-**File:** `app/Listeners/OnPaymentSuccess.php`
+### 3. Handle Success
 
 ```php
+// app/Listeners/OnPaymentSuccess.php
 public function handle(PaymentVerified $event)
 {
-    $order = $event->order;
-    $result = $event->verificationResult;
-
-    // Update your order
-    $order->update([
+    $event->order->update([
         'status' => 'paid',
-        'transaction_id' => $result->getTransactionId(), // Get TRX ID from POS
+        'transaction_id' => $event->verificationResult->getTransactionId(),
         'paid_at' => now(),
     ]);
-
-    // Send email, clear cart, etc.
 }
 ```
 
----
+## Error Codes
 
-## 🎨 advanced Configuration
+| Code | Meaning | Solution |
+|------|---------|----------|
+| `METHOD_MISMATCH` | Payment method mismatch | User must pay with selected method |
+| `AMOUNT_MISMATCH` | Amount doesn't match | Paid amount must equal order total |
+| `STORE_MISMATCH` | Wrong store | Check `VENDWEAVE_STORE_SLUG` |
+| `TRANSACTION_USED` | Already used | Each TRX ID is single-use |
+| `401 Unauthorized` | Invalid credentials | Use General API Credentials |
 
-### Custom Instructions
+## Documentation
 
-You can modify the user-facing text for each payment method in `config/vendweave.php`.
+📖 **[Full Integration Guide](docs/INTEGRATION_GUIDE.md)** — Step-by-step setup with Laravel 12
 
-```php
-'payment_methods' => [
-    'bkash' => [
-        'number' => env('VENDWEAVE_BKASH_NUMBER'),
-        'type' => 'merchant',
-        'instruction' => 'Go to Payment option in bKash App and enter Counter 1.',
-    ],
-],
-```
+📋 **[API Contract](docs/API_CONTRACT.md)** — POS endpoint specifications
 
-### Customizing Views
+📝 **[Release Notes](docs/RELEASE_NOTES_v1.9.1.md)** — v1.9.1 changelog
 
-If you need to completely overhaul the UI, you can publish the views:
-
-```bash
-php artisan vendor:publish --tag=vendweave-views
-```
-
----
-
-## 🚨 Troubleshooting & Error Codes
-
-| Error Code         | Meaning                  | Solution                                                                 |
-| :----------------- | :----------------------- | :----------------------------------------------------------------------- |
-| `METHOD_MISMATCH`  | Payment method mismatch  | Ensure user selected the same method (bKash) that they paid with.        |
-| `AMOUNT_MISMATCH`  | Amount mismatch          | The paid amount must match the order total **exactly**.                  |
-| `STORE_MISMATCH`   | Wrong Store Slug         | Check `VENDWEAVE_STORE_SLUG` in your `.env`.                             |
-| `TRANSACTION_USED` | Transaction already used | Each Transaction ID can only be used once.                               |
-| `401 Unauthorized` | Invalid Credentials      | Use "General API Credentials" from dashboard, NOT "Manual Payment Keys". |
-
----
-
-## 🧭 Reference Governance Engine
-
-The SDK includes a **Reference Governance Engine** to protect each order reference from replay abuse and to provide auditability.
-
-### Lifecycle
-
-References move through a strict lifecycle to prevent reuse:
-
-**RESERVED → MATCHED → REPLAYED / CANCELLED → EXPIRED**
-
-- **RESERVED**: A reference is reserved for a specific order.
-- **MATCHED**: A POS transaction is matched to the reference.
-- **REPLAYED**: A duplicate attempt was detected after match.
-- **CANCELLED**: Reference invalidated before match.
-- **EXPIRED**: Time window exceeded without a match.
-
-### Replay Prevention
-
-Once a reference is **MATCHED**, further attempts are blocked and return replay errors. This prevents double spending and repeated confirmations.
-
-### Expiry & Scheduler
-
-References auto-expire after the configured TTL. Use the scheduler command to mark them as **EXPIRED**:
-
-```
-php artisan vendweave:expire-references
-```
-
-### Analytics & Audit Trail
-
-Reference activity is logged with fields like:
-
-- `reference`
-- `status`
-- `order_id`
-- `store_id`
-- `expires_at`
-- `matched_at`
-- `replay_count`
-
-These logs support analytics, reconciliation, and audit readiness.
-
-## 📜 License
+## License
 
 MIT License. See [LICENSE](LICENSE) for details.

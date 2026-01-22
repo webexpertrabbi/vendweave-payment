@@ -1,21 +1,21 @@
 # VendWeave Laravel Integration Guide
 
-একটি সম্পূর্ণ step-by-step guide VendWeave Payment Gateway integrate করার জন্য।
+This guide is the official integration reference for VendWeave Laravel SDK (Laravel 12 compatible).
 
 ---
 
 ## 📋 Prerequisites
 
-- Laravel 10.x বা 11.x
+- Laravel 12.x
 - PHP 8.1+
 - Composer
 - VendWeave POS account (API Key, Secret, Store Slug)
 
 ---
 
-## 🗂️ Database Requirements
+## 🗂️ Database Requirements (Optional)
 
-তোমার `orders` table এ নিম্নলিখিত fields থাকা উচিত:
+You can use your existing `orders` table. These fields are recommended for full automation, but the SDK can still operate without migrations.
 
 ```php
 Schema::create('orders', function (Blueprint $table) {
@@ -28,13 +28,26 @@ Schema::create('orders', function (Blueprint $table) {
 });
 ```
 
-> 💡 **Tip**: যদি তোমার field names আলাদা হয়, দেখো [Field Mapping Guide](FIELD_MAPPING.md)
+> 💡 Tip: If your field names differ, use the `order_mapping` config in `config/vendweave.php`.
+
+### Example Mapping
+
+```php
+// config/vendweave.php
+'order_mapping' => [
+    'id' => 'order_id',
+    'amount' => 'grand_total',
+    'payment_method' => 'gateway',
+    'status' => 'order_status',
+    'trx_id' => 'transaction_ref',
+],
+```
 
 ---
 
 ## ⚡ Installation
 
-### Step 1: Install via Composer
+### Option A: Install via Composer
 
 ```bash
 composer require vendweave/payment
@@ -48,34 +61,20 @@ composer require vendweave/payment
 php artisan vendor:publish --tag=vendweave-config
 ```
 
-এটা `config/vendweave.php` তৈরি করবে।
+This creates `config/vendweave.php`.
+
+### Option B: Local Path Repository (for development)
+
+```bash
+composer config repositories.vendweave path "../vendweave-payment"
+composer require vendweave/payment:@dev
+```
 
 ---
 
 ## ⚙️ Environment Setup
 
-### Critical: API Credential Types
-
-> ⚠️ **Common Mistake Alert**: Using wrong API credentials causes 401 Unauthorized error!
-
-#### Step 1: Get Correct Credentials
-
-1. Log into [VendWeave Dashboard](https://vendweave.com/dashboard)
-2. Navigate to: **Settings** → **API Credentials**
-3. Look for the section based on your integration:
-
-| Integration Type          | Use This Section          | Status          |
-| ------------------------- | ------------------------- | --------------- |
-| 🌐 Laravel/Website        | "General API Credentials" | ✅ **CORRECT**  |
-| 🌐 Laravel/Website        | "Website API Keys"        | ✅ **CORRECT**  |
-| 📱 Android SMS App        | "Manual Payment API Keys" | ✅ For App Only |
-| ❌ Laravel using "Manual" | "Manual Payment API Keys" | ❌ **WRONG**    |
-
-> ❌ **NEVER use "Manual Payment API Keys" for Laravel integration!**
-
-#### Step 2: Add to `.env`
-
-`.env` ফাইলে add করো:
+Add the following to your `.env`:
 
 ```env
 VENDWEAVE_API_KEY=your_api_key
@@ -86,9 +85,9 @@ VENDWEAVE_API_ENDPOINT=https://vendweave.com/api
 
 | Variable                 | Description                | Example                     |
 | ------------------------ | -------------------------- | --------------------------- |
-| `VENDWEAVE_API_KEY`      | তোমার API Key              | `vw_live_xxxx`              |
-| `VENDWEAVE_API_SECRET`   | তোমার API Secret           | `secret_xxxx`               |
-| `VENDWEAVE_STORE_SLUG`   | তোমার Store এর unique slug | `my-fashion-store`          |
+| `VENDWEAVE_API_KEY`      | API Key                    | `vw_live_xxxx`              |
+| `VENDWEAVE_API_SECRET`   | API Secret                 | `secret_xxxx`               |
+| `VENDWEAVE_STORE_SLUG`   | Store slug                 | `my-fashion-store`          |
 | `VENDWEAVE_API_ENDPOINT` | POS API URL                | `https://vendweave.com/api` |
 
 ---
@@ -139,13 +138,13 @@ class CheckoutController extends Controller
 
 ## 📄 Verification Page
 
-User যাবে:
+User visits:
 
 ```
 /vendweave/verify/{order_id}
 ```
 
-এই পেজে:
+This page provides:
 
 | Feature      | Description                            |
 | ------------ | -------------------------------------- |
@@ -278,11 +277,34 @@ The SDK follows the same POS contract lifecycle used by the WordPress plugin:
 
 This ensures the Laravel SDK behaves exactly like the WordPress reference implementation.
 
+## ✅ POS Required Fields (Contract)
+
+These are the POS-required fields for each step:
+
+**Reserve Reference**
+- `payment_reference`
+- `payment_method`
+- `expected_amount`
+- `wc_order_id`
+
+**Poll Transaction**
+- `payment_reference`
+- `payment_method`
+- `expected_amount`
+- `wc_order_id`
+
+**Verify Transaction (Confirm)**
+- `trx_id`
+- `payment_reference`
+- `payment_method`
+- `expected_amount`
+- `wc_order_id`
+
 ---
 
-## 🧭 Reference Governance Engine
+## 🧭 Reference System (Optional)
 
-VendWeave SDK এখন **Reference Governance Engine** ব্যবহার করে reference replay, expiry, এবং audit tracking নিশ্চিত করে।
+VendWeave SDK supports a **Reference Governance Engine** for replay prevention, expiry handling, and audit tracking.
 
 ### ✅ Lifecycle
 

@@ -31,5 +31,3 @@ This patch finalizes POS contract alignment with the WordPress reference impleme
 ## ✅ Verification Status
 
 **SDK is officially marked Protocol Aligned.**
-
-See report: [docs/VERIFICATION_REPORT_PROTOCOL_ALIGNMENT.md](VERIFICATION_REPORT_PROTOCOL_ALIGNMENT.md)
