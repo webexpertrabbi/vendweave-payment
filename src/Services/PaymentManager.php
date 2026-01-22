@@ -48,6 +48,24 @@ class PaymentManager implements PaymentGatewayInterface
     }
 
     /**
+     * Reserve a payment reference with POS (optional, safe).
+     *
+     * @param string $orderId
+     * @param float $amount
+     * @param string $paymentMethod
+     * @param string $reference
+     * @return array|null
+     */
+    public function reserveReference(
+        string $orderId,
+        float $amount,
+        string $paymentMethod,
+        string $reference
+    ): ?array {
+        return $this->verifier->reserveReference($orderId, $amount, $paymentMethod, $reference);
+    }
+
+    /**
      * Get list of supported payment methods.
      *
      * @return array<string>

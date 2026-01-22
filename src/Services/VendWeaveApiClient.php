@@ -100,7 +100,9 @@ class VendWeaveApiClient
 
         // Reference-based logging (before request for debugging)
         $this->log('info', 'Poll Transaction', [
+            'endpoint' => '/api/v1/woocommerce/poll-transaction',
             'reference' => $reference,
+            'payment_reference' => $reference,
             'order_id' => $orderId,
             'amount' => $amount,
             'store_slug' => $this->storeSlug,
@@ -172,6 +174,16 @@ class VendWeaveApiClient
             $params['reference'] = $reference;
         }
 
+        $this->log('info', 'Verify Transaction', [
+            'endpoint' => '/api/v1/woocommerce/verify-transaction',
+            'reference' => $reference,
+            'payment_reference' => $reference,
+            'order_id' => $orderId,
+            'amount' => $amount,
+            'trx_id' => $trxId,
+            'store_slug' => $this->storeSlug,
+        ]);
+
         $response = $this->request('POST', '/api/v1/woocommerce/verify-transaction', $params);
         
         // Normalize response structure (List → Object, auto-detect fields)
@@ -186,6 +198,46 @@ class VendWeaveApiClient
         }
         
         return $normalized;
+    }
+
+    /**
+     * Reserve a payment reference with the POS API.
+     * 
+     * @param string $orderId
+     * @param float $amount
+     * @param string $paymentMethod
+     * @param string $reference
+     * @return array Raw API response data
+     * @throws ApiConnectionException
+     * @throws InvalidCredentialsException
+     */
+    public function reserveReference(
+        string $orderId,
+        float $amount,
+        string $paymentMethod,
+        string $reference
+    ): array {
+        $this->validateCredentials();
+
+        $params = $this->normalizeApiPayload([
+            'order_id' => $orderId,
+            'amount' => $amount,
+            'payment_method' => $paymentMethod,
+            'reference' => $reference,
+        ]);
+
+        $this->log('info', 'Reserve Reference', [
+            'endpoint' => '/api/v1/woocommerce/reserve-reference',
+            'reference' => $reference,
+            'payment_reference' => $reference,
+            'order_id' => $orderId,
+            'amount' => $amount,
+            'store_slug' => $this->storeSlug,
+        ]);
+
+        $response = $this->request('POST', '/api/v1/woocommerce/reserve-reference', $params);
+
+        return $this->normalizeResponse($response);
     }
 
     /**
@@ -404,6 +456,12 @@ class VendWeaveApiClient
         // Step 2: Auto-detect and normalize field names
         $response = $this->normalizeResponseFields($response);
 
+        // Step 2.1: Normalize status values for consistent handling
+        if (isset($response['status'])) {
+            $response['raw_status'] = $response['status'];
+            $response['status'] = $this->normalizeStatusValue((string) $response['status']);
+        }
+
         // Step 3: Inject missing store_slug if not present
         if (!isset($response['store_slug']) && $this->storeSlug) {
             $this->log('warning', 'API response missing store_slug, injecting from config', [
@@ -457,6 +515,9 @@ class VendWeaveApiClient
             'order_id' => ['wc_order_id', 'order_id', 'order_no', 'invoice_id'],
             'amount' => ['expected_amount', 'amount', 'total', 'grand_total'],
             'store_slug' => ['store_slug', 'store_id', 'shop_slug'],
+            'reference' => ['payment_reference', 'reference', 'ref'],
+            'trx_id' => ['trx_id', 'transaction_id', 'payment_id'],
+            'status' => ['status', 'transaction_status'],
         ]);
 
         $normalized = $response;
@@ -484,6 +545,19 @@ class VendWeaveApiClient
         }
 
         return $normalized;
+    }
+
+    /**
+     * Normalize POS status values to SDK canonical statuses.
+     */
+    private function normalizeStatusValue(string $status): string
+    {
+        $normalized = strtolower(trim($status));
+
+        return match ($normalized) {
+            'success', 'used' => 'confirmed',
+            default => $normalized,
+        };
     }
 
     /**

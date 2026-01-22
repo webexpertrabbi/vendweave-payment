@@ -326,6 +326,7 @@ return [
     'api_param_mapping' => [
         'order_id' => 'wc_order_id',
         'amount' => 'expected_amount',
+        'reference' => 'payment_reference',
     ],
 
     /*
@@ -345,6 +346,9 @@ return [
         'amount' => ['expected_amount', 'amount', 'total', 'grand_total'],
         'store_slug' => ['store_slug', 'store_id', 'shop_slug'],
         'payment_method' => ['payment_method', 'method', 'gateway', 'payment_type', 'pay_via'],
+        'reference' => ['payment_reference', 'reference', 'ref'],
+        'trx_id' => ['trx_id', 'transaction_id', 'payment_id'],
+        'status' => ['status', 'transaction_status'],
     ],
 
     /*

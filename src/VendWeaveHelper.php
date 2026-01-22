@@ -4,7 +4,9 @@ namespace VendWeave\Gateway;
 
 use Illuminate\Support\Facades\Session;
 use VendWeave\Gateway\Services\CertificationManager;
+use VendWeave\Gateway\Services\PaymentManager;
 use VendWeave\Gateway\Services\ReferenceGovernor;
+use Throwable;
 
 /**
  * Helper class for common VendWeave operations.
@@ -50,6 +52,16 @@ class VendWeaveHelper
 
         // Reserve reference in governance engine (if enabled)
         ReferenceGovernor::reserve($storeId, $orderId, $reference, $ttl);
+
+        // Reserve reference in POS (optional - safe fallback)
+        try {
+            if (function_exists('app')) {
+                $paymentManager = app(PaymentManager::class);
+                $paymentManager->reserveReference($orderId, $amount, $paymentMethod, $reference);
+            }
+        } catch (Throwable $e) {
+            // Swallow exceptions to keep integration safe
+        }
 
         // Store in session for verification page
         Session::put("vendweave_order_{$orderId}", [

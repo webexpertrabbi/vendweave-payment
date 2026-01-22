@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.1] - 2026-01-22
+
+### ✅ Protocol Alignment Patch
+
+Finalizes POS contract alignment with the WordPress reference implementation.
+
+### ✨ Added
+
+- Payload mapping aligned to POS contract:
+  - `payment_reference`
+  - `expected_amount`
+  - `wc_order_id`
+- Response normalization supports:
+  - `transaction_status`
+  - `pay_via`
+  - `transaction_id`
+
+### 🔄 Changed
+
+- Poll now escalates to verify when `trx_id` is present.
+- Lifecycle sequence mirrors WordPress: reserve → poll → verify.
+
+### ✅ Package Safety
+
+- No hard dependency on migrations, DB, or POS availability.
+
+---
+
 ## [1.9.0] - 2026-01-22
 
 ### 🏅 Certified Integration Badge System

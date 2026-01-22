@@ -55,6 +55,28 @@ class TransactionVerifier
                 $expectedReference
             );
 
+            $status = $response['status'] ?? 'unknown';
+            $resolvedTrxId = $trxId ?? ($response['trx_id'] ?? null);
+
+            // If POS is still pending but we have a TRX ID, escalate to verify
+            if ($status === 'pending' && $resolvedTrxId) {
+                $verifyResponse = $this->apiClient->verifyTransaction(
+                    $orderId,
+                    $expectedAmount,
+                    $expectedMethod,
+                    $resolvedTrxId,
+                    $expectedReference
+                );
+
+                return $this->processResponse(
+                    $verifyResponse,
+                    $expectedAmount,
+                    $expectedMethod,
+                    $orderId,
+                    $expectedReference
+                );
+            }
+
             return $this->processResponse(
                 $response,
                 $expectedAmount,
@@ -68,6 +90,33 @@ class TransactionVerifier
                 'API_ERROR',
                 $e->getMessage()
             );
+        }
+    }
+
+    /**
+     * Reserve a payment reference with POS (optional, safe).
+     *
+     * @param string $orderId
+     * @param float $amount
+     * @param string $paymentMethod
+     * @param string $reference
+     * @return array|null
+     */
+    public function reserveReference(
+        string $orderId,
+        float $amount,
+        string $paymentMethod,
+        string $reference
+    ): ?array {
+        try {
+            return $this->apiClient->reserveReference(
+                $orderId,
+                $amount,
+                $paymentMethod,
+                $reference
+            );
+        } catch (ApiConnectionException $e) {
+            return null;
         }
     }
 
@@ -99,6 +148,7 @@ class TransactionVerifier
 
         // Get status from response
         $status = $response['status'] ?? 'unknown';
+        $rawStatus = $response['raw_status'] ?? $status;
 
         // Handle POS status values
         switch ($status) {
@@ -150,6 +200,8 @@ class TransactionVerifier
         string $orderId,
         ?string $expectedReference = null
     ): VerificationResult {
+        $status = $response['status'] ?? 'confirmed';
+        $rawStatus = $response['raw_status'] ?? $status;
         $trxId = $response['trx_id'] ?? null;
         $receivedAmount = (float) ($response['amount'] ?? 0);
         $receivedMethod = strtolower($response['payment_method'] ?? '');
@@ -189,7 +241,10 @@ class TransactionVerifier
         $referenceExpiresAt = $response['reference_expires_at'] ?? null;
 
         $logContext = [
+            'status' => $status,
+            'raw_status' => $rawStatus,
             'expected_reference' => $expectedReference,
+            'payment_reference' => $receivedReference,
             'received_reference' => $receivedReference,
             'pos_reference_status' => $posReferenceStatus,
             'reference_created_at' => $referenceCreatedAt,

@@ -267,6 +267,17 @@ protected $listen = [
 └──────────────┘
 ```
 
+### ✅ Protocol-Aligned Verification Flow (WordPress-Equivalent)
+
+The SDK follows the same POS contract lifecycle used by the WordPress plugin:
+
+1. **Reserve Reference** (POS): reference is registered before polling.
+2. **Poll Transaction**: POS checks for incoming payment.
+3. **Verify Transaction**: if `trx_id` exists and poll stays pending, SDK escalates to verify.
+4. **Confirm**: POS returns `status=confirmed` only after verify endpoint.
+
+This ensures the Laravel SDK behaves exactly like the WordPress reference implementation.
+
 ---
 
 ## 🧭 Reference Governance Engine
