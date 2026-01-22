@@ -348,7 +348,7 @@ return [
         'payment_method' => ['payment_method', 'method', 'gateway', 'payment_type', 'pay_via'],
         'reference' => ['payment_reference', 'reference', 'ref'],
         'trx_id' => ['trx_id', 'transaction_id', 'payment_id'],
-        'status' => ['status', 'transaction_status'],
+        'status' => ['status', 'transaction_status', 'payment_status', 'txn_status', 'state'],
     ],
 
     /*

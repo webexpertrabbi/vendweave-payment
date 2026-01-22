@@ -177,10 +177,14 @@ class TransactionVerifier
                 );
 
             default:
-                return VerificationResult::failed(
-                    'UNKNOWN_STATUS',
-                    "Unknown transaction status: {$status}"
-                );
+                // Graceful fallback: treat any unrecognized status as pending
+                // SDK should never throw "unknown status" to clients
+                Log::warning('[VendWeave] Unrecognized status in TransactionVerifier, treating as pending', [
+                    'status' => $status,
+                    'raw_status' => $rawStatus,
+                    'order_id' => $orderId,
+                ]);
+                return VerificationResult::pending('Transaction status pending verification');
         }
     }
 

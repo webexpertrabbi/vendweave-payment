@@ -517,7 +517,7 @@ class VendWeaveApiClient
             'store_slug' => ['store_slug', 'store_id', 'shop_slug'],
             'reference' => ['payment_reference', 'reference', 'ref'],
             'trx_id' => ['trx_id', 'transaction_id', 'payment_id'],
-            'status' => ['status', 'transaction_status'],
+            'status' => ['status', 'transaction_status', 'payment_status', 'txn_status', 'state'],
         ]);
 
         $normalized = $response;
@@ -549,15 +549,72 @@ class VendWeaveApiClient
 
     /**
      * Normalize POS status values to SDK canonical statuses.
+     * 
+     * Canonical statuses: confirmed, pending, expired, used, failed
+     * All unknown/empty values fallback to 'pending' for graceful handling.
      */
     private function normalizeStatusValue(string $status): string
     {
         $normalized = strtolower(trim($status));
 
-        return match ($normalized) {
-            'success', 'used' => 'confirmed',
-            default => $normalized,
-        };
+        // Empty or whitespace-only → pending
+        if ($normalized === '' || $normalized === 'unknown') {
+            $this->log('warning', 'Empty or unknown status received, normalizing to pending', [
+                'raw_status' => $status,
+            ]);
+            return 'pending';
+        }
+
+        // Canonical status mapping
+        $statusMap = [
+            // Confirmed variants
+            'confirmed' => 'confirmed',
+            'success'   => 'confirmed',
+            'paid'      => 'confirmed',
+            'completed' => 'confirmed',
+            'approved'  => 'confirmed',
+            'verified'  => 'confirmed',
+            'matched'   => 'confirmed',
+
+            // Pending variants
+            'pending'    => 'pending',
+            'processing' => 'pending',
+            'waiting'    => 'pending',
+            'initiated'  => 'pending',
+            'in_progress'=> 'pending',
+            'inprogress' => 'pending',
+
+            // Expired variants
+            'expired'    => 'expired',
+            'timeout'    => 'expired',
+            'timed_out'  => 'expired',
+
+            // Used/Replayed variants
+            'used'       => 'used',
+            'replayed'   => 'used',
+            'duplicate'  => 'used',
+            'already_used' => 'used',
+
+            // Failed variants
+            'failed'     => 'failed',
+            'error'      => 'failed',
+            'rejected'   => 'failed',
+            'declined'   => 'failed',
+            'cancelled'  => 'failed',
+            'canceled'   => 'failed',
+        ];
+
+        if (isset($statusMap[$normalized])) {
+            return $statusMap[$normalized];
+        }
+
+        // Graceful fallback: unknown status → pending (never throw)
+        $this->log('warning', 'Unrecognized POS status, normalizing to pending', [
+            'raw_status' => $status,
+            'normalized' => $normalized,
+        ]);
+
+        return 'pending';
     }
 
     /**
