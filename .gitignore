@@ -11,6 +11,8 @@ composer.lock
 Thumbs.db
 
 # Testing
+/tests/
+phpunit.xml
 .phpunit.result.cache
 .phpunit.cache/
 coverage/
