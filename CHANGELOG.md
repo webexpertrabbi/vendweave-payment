@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.3] - 2026-01-23
+
+### 🚀 Laravel 12 Full Compatibility
+
+Official Laravel 12 support with verified Composer install compatibility.
+
+### ✨ Added
+
+- `illuminate/contracts` dependency for complete Laravel 12 support
+
+### 🔄 Changed
+
+- PHP requirement simplified to `^8.1`
+- Removed dev dependencies from production package
+- Removed test artifacts (tests/, phpunit.xml)
+
+### ✅ Compatibility
+
+- Laravel 10.x ✅
+- Laravel 11.x ✅
+- Laravel 12.x ✅
+- PHP 8.1+ ✅
+
+### 📦 Package
+
+- Clean install via `composer require vendweave/payment`
+- Path repository support without GitHub token
+- Zero dependency conflicts
+
+---
+
+## [1.9.2] - 2026-01-23
+
+### 🔧 POS Status Normalization Patch
+
+Fixed SDK-level POS status normalization to prevent "unknown transaction status" errors.
+
+### ✨ Added
+
+- Expanded status field detection: `status`, `transaction_status`, `payment_status`, `txn_status`, `state`
+- Canonical status mapping with graceful fallback
+- SDK never throws "unknown status" to clients
+
+### 🔄 Changed
+
+- Unknown/empty status → `pending` (graceful fallback)
+- TransactionVerifier fallback instead of fatal error
+
+---
+
 ## [1.9.1] - 2026-01-22
 
 ### ✅ Protocol Alignment Patch
