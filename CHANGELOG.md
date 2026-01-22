@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.4] - 2026-01-23
+
+### 🔍 Diagnostic Warning for POS Debugging
+
+Added diagnostic warning log when pending reference awaits `trx_id` from POS.
+
+### ✨ Added
+
+- Warning log when `status === pending` AND `reference` exists BUT `trx_id` missing
+- Includes `awaiting_trx_id_from_pos: true` flag for audit trail
+
+### 📋 Log Output
+
+```
+[VendWeave] Awaiting trx_id from POS
+- reference: {payment_reference}
+- status: pending
+- order_id: {order_id}
+- awaiting_trx_id_from_pos: true
+```
+
+### ⚠️ Note
+
+This is diagnostic-only. No protocol or verification flow changes.
+
+---
+
 ## [1.9.3] - 2026-01-23
 
 ### 🚀 Laravel 12 Full Compatibility

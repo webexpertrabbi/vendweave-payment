@@ -77,6 +77,16 @@ class TransactionVerifier
                 );
             }
 
+            // Diagnostic warning: pending with reference but no trx_id from POS
+            if ($status === 'pending' && $expectedReference && !$resolvedTrxId) {
+                Log::warning('[VendWeave] Awaiting trx_id from POS', [
+                    'reference' => $expectedReference,
+                    'status' => 'pending',
+                    'order_id' => $orderId,
+                    'awaiting_trx_id_from_pos' => true,
+                ]);
+            }
+
             return $this->processResponse(
                 $response,
                 $expectedAmount,
