@@ -166,6 +166,21 @@ class TransactionVerifier
                 return VerificationResult::pending('Transaction is pending verification');
 
             case 'used':
+                if ($this->isUsedForCurrentOrder($response, $orderId, $expectedReference)) {
+                    Log::info('[VendWeave] Used status matched current order, treating as confirmed', [
+                        'order_id' => $orderId,
+                        'reference' => $expectedReference,
+                        'trx_id' => $response['trx_id'] ?? null,
+                    ]);
+                    return $this->validateConfirmedTransaction(
+                        $response,
+                        $expectedAmount,
+                        $expectedMethod,
+                        $orderId,
+                        $expectedReference
+                    );
+                }
+
                 return VerificationResult::alreadyUsed($response['trx_id'] ?? 'unknown');
 
             case 'expired':
@@ -267,7 +282,16 @@ class TransactionVerifier
             'strict_mode' => $strictMode,
         ];
 
-        // 2a. Check POS reference_status first (expired/replayed detection)
+        // 2a. If POS says used but this order matches, treat as matched
+        if ($status === 'used' && $this->isUsedForCurrentOrder($response, $orderId, $expectedReference)) {
+            $posReferenceStatus = 'matched';
+            $referenceStatus = 'matched';
+            Log::info('[VendWeave] Used status with matching reference/order - treating as matched', array_merge($logContext, [
+                'reference_status' => $referenceStatus,
+            ]));
+        }
+
+        // 2b. Check POS reference_status first (expired/replayed detection)
         if ($posReferenceStatus !== null) {
             switch ($posReferenceStatus) {
                 case 'expired':
@@ -320,7 +344,7 @@ class TransactionVerifier
             }
         }
 
-        // 2b. SDK-side reference validation (if POS didn't provide status)
+        // 2c. SDK-side reference validation (if POS didn't provide status)
         if ($posReferenceStatus === null) {
             if ($strictMode && $expectedReference !== null) {
                 // STRICT MODE: Reference MUST match, no fallback
@@ -396,7 +420,7 @@ class TransactionVerifier
         }
 
         // 4. Reference governance (Phase-5) - only if migration exists
-        $referenceForGovernance = $receivedReference ?? $expectedReference ?? $trxId ?? null;
+        $referenceForGovernance = $receivedReference ?? $expectedReference ?? null;
         if ($referenceForGovernance !== null && class_exists(ReferenceGovernor::class) && ReferenceGovernor::isAvailable()) {
             $governedStatus = ReferenceGovernor::validate(
                 $referenceForGovernance,
@@ -409,19 +433,19 @@ class TransactionVerifier
                 case ReferenceGovernor::STATUS_REPLAYED:
                     return VerificationResult::failed(
                         'REFERENCE_REPLAY',
-                        "Reference {$trxId} has already been used"
+                        "Payment reference {$referenceForGovernance} has already been used"
                     );
 
                 case ReferenceGovernor::STATUS_EXPIRED:
                     return VerificationResult::failed(
                         'REFERENCE_EXPIRED',
-                        "Reference {$trxId} has expired"
+                        "Payment reference {$referenceForGovernance} has expired"
                     );
 
                 case ReferenceGovernor::STATUS_CANCELLED:
                     return VerificationResult::failed(
                         'REFERENCE_CANCELLED',
-                        "Reference {$trxId} was cancelled"
+                        "Payment reference {$referenceForGovernance} was cancelled"
                     );
 
                 case ReferenceGovernor::STATUS_RESERVED:
@@ -458,6 +482,25 @@ class TransactionVerifier
             $referenceCreatedAt,
             $referenceExpiresAt
         );
+    }
+
+    /**
+     * Determine if a USED status belongs to the current order/reference.
+     */
+    private function isUsedForCurrentOrder(array $response, string $orderId, ?string $expectedReference): bool
+    {
+        $receivedOrderId = $response['order_id'] ?? null;
+        $receivedReference = $response['reference'] ?? null;
+
+        if ($expectedReference !== null && $receivedReference !== null) {
+            return $receivedReference === $expectedReference;
+        }
+
+        if ($receivedOrderId !== null) {
+            return (string) $receivedOrderId === (string) $orderId;
+        }
+
+        return false;
     }
 
     /**

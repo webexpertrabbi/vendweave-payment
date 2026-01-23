@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.5] - 2026-01-23
+
+### ✅ Frontend Completion Guard (USED Status)
+
+Treats POS `used` status as terminal success **only when** it matches the current order/reference.
+
+### ✨ Added
+
+- Automatic success finalization when `status=used` and reference/order matches
+- Prevents replay loop and restores frontend completion flow
+
+### 🔒 Safety
+
+- Does **not** guess `trx_id`
+- Does **not** auto-confirm without reference/order match
+
+---
+
 ## [1.9.4] - 2026-01-23
 
 ### 🔍 Diagnostic Warning for POS Debugging
