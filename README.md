@@ -8,21 +8,17 @@
 
 ---
 
-## ⚡ ৩ মিনিটে ইনস্টল
-
-### Step 1: Composer Install
+## ⚡ Quick Install
 
 ```bash
+# Package install
 composer require vendweave/payment
-```
 
-### Step 2: Config Publish
-
-```bash
+# Config publish
 php artisan vendor:publish --tag=vendweave-config
 ```
 
-### Step 3: .env সেটআপ
+## 🔑 .env Setup
 
 ```env
 VENDWEAVE_API_KEY=your_api_key
@@ -30,59 +26,16 @@ VENDWEAVE_API_SECRET=your_api_secret
 VENDWEAVE_STORE_SLUG=your_store_slug
 VENDWEAVE_API_ENDPOINT=https://vendweave.com/api
 
-# পেমেন্ট নম্বর (Verification page এ দেখাবে)
 VENDWEAVE_BKASH_NUMBER="017XXXXXXXX"
 VENDWEAVE_NAGAD_NUMBER="018XXXXXXXX"
-VENDWEAVE_ROCKET_NUMBER="019XXXXXXXX"
-VENDWEAVE_UPAY_NUMBER="016XXXXXXXX"
 ```
 
-**ব্যস! ইনস্টল কমপ্লিট! 🎉**
-
----
-
-## 🔄 পেমেন্ট ফ্লো
-
-```
-┌─────────────────┐
-│   Checkout Page │  ← ইউজার পেমেন্ট মেথড বাছাই করে
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│   Verify Page   │  ← পেমেন্ট ইনস্ট্রাকশন দেখায়
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│   User Pays     │  ← ইউজার bKash/Nagad অ্যাপে পে করে
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│   Auto Verify   │  ← SDK স্বয়ংক্রিয়ভাবে verify করে
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│   Success! ✅   │  ← অর্ডার paid হয়ে যায়
-└─────────────────┘
-```
-
----
-
-## 📖 ডকুমেন্টেশন
-
-| ডকুমেন্ট | বিবরণ |
-|----------|-------|
-| [📘 Installation Guide](docs/INTEGRATION_GUIDE.md) | সম্পূর্ণ ইনস্টলেশন ও সেটআপ গাইড |
-| [📋 API Contract](docs/API_CONTRACT.md) | POS API স্পেসিফিকেশন |
-
----
-
-## 🛒 Quick Example
-
-### Checkout Controller
+## 🛒 Basic Usage
 
 ```php
-use Illuminate\Support\Facades\Session;
+use VendWeave\Gateway\VendWeaveHelper;
 
+// Checkout এ payment process করুন
 public function checkout(Request $request)
 {
     $order = Order::create([
@@ -91,38 +44,55 @@ public function checkout(Request $request)
         'status' => 'pending',
     ]);
 
-    Session::put("vendweave_order_{$order->id}", [
-        'amount' => $order->total,
-        'payment_method' => $order->payment_method,
-    ]);
+    // VendWeave verify page এ redirect
+    $url = VendWeaveHelper::preparePayment(
+        orderId: (string) $order->id,
+        amount: $order->total,
+        paymentMethod: $order->payment_method
+    );
 
-    return redirect()->route('vendweave.verify', ['order' => $order->id]);
+    return redirect($url);
 }
 ```
 
-### Payment Events
+## 📖 Full Documentation
 
-```php
-// EventServiceProvider.php
-use VendWeave\Gateway\Events\PaymentVerified;
-use VendWeave\Gateway\Events\PaymentFailed;
+| ডকুমেন্ট | বিবরণ |
+|----------|-------|
+| 📘 **[Complete Integration Guide](docs/INTEGRATION_GUIDE.md)** | Step-by-step সম্পূর্ণ গাইড |
+| 📋 [API Contract](docs/API_CONTRACT.md) | POS API স্পেসিফিকেশন |
 
-protected $listen = [
-    PaymentVerified::class => [MarkOrderAsPaid::class],
-    PaymentFailed::class   => [HandleFailedPayment::class],
-];
-```
+---
+
+## 🎯 আপনাকে যা যা করতে হবে
+
+| Task | বিবরণ |
+|------|-------|
+| ✅ Install & Configure | Package install, .env setup |
+| ✅ Checkout Page | নিজে বানান (payment method select) |
+| ✅ CheckoutController | Order create → VendWeave redirect |
+| ✅ Event Listeners | PaymentVerified, PaymentFailed handle |
+| ✅ Success/Failed Pages | নিজে বানান |
+
+## 🎁 SDK যা যা দেয়
+
+| Feature | বিবরণ |
+|---------|-------|
+| 🔐 Verify Page | Auto-generated polling UI |
+| 🔄 Auto Polling | POS থেকে payment status check |
+| 📣 Events | PaymentVerified, PaymentFailed |
+| 🛡️ Validation | Amount, method, store matching |
 
 ---
 
 ## ❌ Error Codes
 
-| Code | অর্থ | সমাধান |
-|------|------|--------|
-| `METHOD_MISMATCH` | ভুল পেমেন্ট মেথড | সিলেক্টেড মেথড দিয়ে পে করুন |
-| `AMOUNT_MISMATCH` | Amount ম্যাচ হয়নি | সঠিক amount পাঠান |
-| `STORE_MISMATCH` | স্টোর ম্যাচ হয়নি | `.env` তে store slug চেক করুন |
-| `TRANSACTION_USED` | TRX আগেই ব্যবহৃত | প্রতিটি TRX একবারই ব্যবহার হয় |
+| Code | অর্থ |
+|------|------|
+| `METHOD_MISMATCH` | ভুল payment method |
+| `AMOUNT_MISMATCH` | Amount match হয়নি |
+| `STORE_MISMATCH` | Store slug ভুল |
+| `TRANSACTION_USED` | TRX আগে ব্যবহৃত |
 
 ---
 
