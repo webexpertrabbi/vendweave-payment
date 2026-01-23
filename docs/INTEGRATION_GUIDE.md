@@ -300,7 +300,61 @@ php artisan migrate
 
 ---
 
-# 🎮 STEP 5: CheckoutController তৈরি করুন
+# 🎮 STEP 5: Controller এ VendWeave Integration
+
+আপনার existing `OrderController.php` বা নতুন `CheckoutController.php` এ **তিনটি জিনিস** যোগ করতে হবে:
+
+---
+
+## 📋 তিনটি পরিবর্তন (Summary)
+
+| Step | কি করতে হবে | কোথায় |
+|------|-------------|-------|
+| 1️⃣ | `payment_method` validation যোগ করুন | `$request->validate()` এ |
+| 2️⃣ | `payment_method` database এ save করুন | `Order::create()` এ |
+| 3️⃣ | Session set করে VendWeave redirect করুন | Order create এর পরে |
+
+---
+
+## 1️⃣ Validation এ `payment_method` যোগ করুন
+
+```php
+$validated = $request->validate([
+    // ...আপনার existing validations...
+    'payment_method' => ['required', 'in:bkash,nagad,rocket,upay'], // 🆕 এটা যোগ করুন
+]);
+```
+
+---
+
+## 2️⃣ Order create করার সময় `payment_method` save করুন
+
+```php
+$order = Order::create([
+    // ...আপনার existing fields...
+    'payment_method' => $validated['payment_method'], // 🆕 এটা যোগ করুন
+]);
+```
+
+---
+
+## 3️⃣ Session set করে VendWeave verify page এ redirect করুন
+
+Order create এর পরে এই কোড যোগ করুন:
+
+```php
+// 🆕 VendWeave Integration - এই তিন লাইন যোগ করুন
+\Session::put("vendweave_order_{$order->id}", [
+    'amount' => $order->total_price, // আপনার total field name
+    'payment_method' => $order->payment_method,
+]);
+
+return redirect()->route('vendweave.verify', ['order' => $order->id]);
+```
+
+---
+
+## 📄 Complete Controller Example
 
 ```bash
 php artisan make:controller CheckoutController
@@ -315,7 +369,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use Illuminate\Http\Request;
-use VendWeave\Gateway\VendWeaveHelper;
+use Illuminate\Http\RedirectResponse;
 
 class CheckoutController extends Controller
 {
@@ -324,44 +378,100 @@ class CheckoutController extends Controller
      */
     public function show()
     {
-        // আপনার cart total বা order total
-        $total = 1250.00; // এটা আপনার cart থেকে আসবে
-        
+        $total = 1250.00; // আপনার cart total
         return view('checkout', compact('total'));
     }
     
     /**
-     * Payment process করুন
+     * Order create এবং Payment process করুন
      */
-    public function process(Request $request)
+    public function process(Request $request): RedirectResponse
     {
-        // Validate input
-        $request->validate([
-            'payment_method' => 'required|in:bkash,nagad,rocket,upay',
+        // ✅ Step 1: Validation (payment_method সহ)
+        $validated = $request->validate([
+            'customer_name' => ['required', 'string', 'max:255'],
+            'customer_phone' => ['required', 'string', 'max:30'],
+            'customer_address' => ['required', 'string', 'max:500'],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'payment_method' => ['required', 'in:bkash,nagad,rocket,upay'], // 🆕
         ]);
-        
-        // Order তৈরি করুন
+
+        // আপনার price calculation
+        $unitPrice = 500.00; // আপনার product price
+        $qty = (int)$validated['quantity'];
+        $totalPrice = $unitPrice * $qty;
+
+        // ✅ Step 2: Order create (payment_method সহ)
         $order = Order::create([
-            'user_id' => auth()->id(), // যদি auth থাকে
-            'total' => 1250.00, // আপনার cart total
-            'payment_method' => $request->payment_method,
+            'customer_name' => $validated['customer_name'],
+            'customer_phone' => $validated['customer_phone'],
+            'customer_address' => $validated['customer_address'],
+            'quantity' => $qty,
+            'unit_price' => $unitPrice,
+            'total_price' => $totalPrice,
             'status' => 'pending',
+            'payment_method' => $validated['payment_method'], // 🆕
         ]);
-        
-        // VendWeave Helper দিয়ে payment prepare করুন
-        // এটি automatically:
-        // 1. Reference generate করে
-        // 2. POS এ reserve করে
-        // 3. Session এ data রাখে
-        $verifyUrl = VendWeaveHelper::preparePayment(
-            orderId: (string) $order->id,
-            amount: $order->total,
-            paymentMethod: $order->payment_method
-        );
-        
-        // VendWeave verify page এ redirect করুন
-        return redirect($verifyUrl);
+
+        // ✅ Step 3: VendWeave Integration
+        \Session::put("vendweave_order_{$order->id}", [
+            'amount' => $order->total_price,
+            'payment_method' => $order->payment_method,
+        ]);
+
+        // VendWeave verify page এ redirect
+        return redirect()->route('vendweave.verify', ['order' => $order->id]);
     }
+}
+```
+
+---
+
+## 🔄 Existing OrderController এ Integration
+
+যদি আপনার already `OrderController` আছে, তাহলে শুধু এই changes করুন:
+
+### আগে (Before):
+
+```php
+public function store(Request $request): RedirectResponse
+{
+    $validated = $request->validate([
+        'customer_name' => ['required'],
+        // ...other validations...
+    ]);
+
+    $order = Order::create([
+        // ...fields...
+    ]);
+
+    return redirect()->route('orders.show', $order);
+}
+```
+
+### পরে (After):
+
+```php
+public function store(Request $request): RedirectResponse
+{
+    $validated = $request->validate([
+        'customer_name' => ['required'],
+        // ...other validations...
+        'payment_method' => ['required', 'in:bkash,nagad,rocket,upay'], // 🆕 যোগ করুন
+    ]);
+
+    $order = Order::create([
+        // ...existing fields...
+        'payment_method' => $validated['payment_method'], // 🆕 যোগ করুন
+    ]);
+
+    // 🆕 VendWeave Integration - নিচের কোড যোগ করুন
+    \Session::put("vendweave_order_{$order->id}", [
+        'amount' => $order->total_price,
+        'payment_method' => $order->payment_method,
+    ]);
+
+    return redirect()->route('vendweave.verify', ['order' => $order->id]); // 🆕 পরিবর্তন করুন
 }
 ```
 
@@ -741,6 +851,47 @@ class OrderController extends Controller
 | Events not firing | Event register ঠিক আছে কিনা দেখুন |
 | **Payment logos দেখা যাচ্ছে না** | `php artisan vendor:publish --tag=vendweave-assets --force` চালান |
 | Images 404 error | `public/vendor/vendweave/images/` folder আছে কিনা দেখুন |
+| **Reference দেখাচ্ছে না verify page এ** | `Session::put()` এর বদলে `VendWeaveHelper::preparePayment()` use করুন |
+
+---
+
+### 🔢 Reference দেখাচ্ছে না (VW3846)
+
+**সমস্যা:** Verify page এ Reference number দেখা যাচ্ছে না।
+
+**কারণ:** সরাসরি `Session::put()` use করলে reference generate হয় না।
+
+**সমাধান:** `VendWeaveHelper::preparePayment()` use করুন:
+
+**📁 File:** `app/Http/Controllers/OrderController.php`
+
+**Step 1:** Import যুক্ত করুন:
+```php
+use VendWeave\Gateway\VendWeaveHelper;
+```
+
+**Step 2:** Session set করার কোড replace করুন:
+
+```php
+// ❌ এটা Remove করুন
+\Session::put("vendweave_order_{$order->id}", [
+    'amount' => $order->total_price,
+    'payment_method' => $order->payment_method,
+]);
+return redirect()->route('vendweave.verify', ['order' => $order->id]);
+
+// ✅ এটা Add করুন
+$redirectUrl = VendWeaveHelper::preparePayment(
+    orderId: (string) $order->id,
+    amount: $order->total_price,
+    paymentMethod: $order->payment_method
+);
+return redirect($redirectUrl);
+```
+
+**Result:** এখন verify page এ reference (VW3846) দেখাবে! ✅
+
+---
 
 ### 🖼️ Payment Gateway Logos সমস্যা
 
