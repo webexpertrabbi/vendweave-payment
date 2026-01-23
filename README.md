@@ -4,23 +4,25 @@
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.1-8892BF.svg)](https://php.net/)
 [![Laravel Version](https://img.shields.io/badge/laravel-10.x%20%7C%2011.x%20%7C%2012.x-FF2D20.svg)](https://laravel.com/)
 
-Protocol-aligned Laravel SDK for VendWeave POS payment verification.
+বাংলাদেশি মোবাইল পেমেন্ট গেটওয়ে (bKash, Nagad, Rocket, Upay) এর জন্য Laravel SDK।
 
 ---
 
-## Installation
+## ⚡ ৩ মিনিটে ইনস্টল
+
+### Step 1: Composer Install
 
 ```bash
 composer require vendweave/payment
 ```
 
+### Step 2: Config Publish
+
 ```bash
 php artisan vendor:publish --tag=vendweave-config
 ```
 
-## Configuration
-
-Add credentials to `.env`:
+### Step 3: .env সেটআপ
 
 ```env
 VENDWEAVE_API_KEY=your_api_key
@@ -28,14 +30,56 @@ VENDWEAVE_API_SECRET=your_api_secret
 VENDWEAVE_STORE_SLUG=your_store_slug
 VENDWEAVE_API_ENDPOINT=https://vendweave.com/api
 
-# Payment Numbers (displayed on verification page)
+# পেমেন্ট নম্বর (Verification page এ দেখাবে)
 VENDWEAVE_BKASH_NUMBER="017XXXXXXXX"
 VENDWEAVE_NAGAD_NUMBER="018XXXXXXXX"
+VENDWEAVE_ROCKET_NUMBER="019XXXXXXXX"
+VENDWEAVE_UPAY_NUMBER="016XXXXXXXX"
 ```
 
-## Quick Start
+**ব্যস! ইনস্টল কমপ্লিট! 🎉**
 
-### 1. Checkout → Redirect
+---
+
+## 🔄 পেমেন্ট ফ্লো
+
+```
+┌─────────────────┐
+│   Checkout Page │  ← ইউজার পেমেন্ট মেথড বাছাই করে
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│   Verify Page   │  ← পেমেন্ট ইনস্ট্রাকশন দেখায়
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│   User Pays     │  ← ইউজার bKash/Nagad অ্যাপে পে করে
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│   Auto Verify   │  ← SDK স্বয়ংক্রিয়ভাবে verify করে
+└────────┬────────┘
+         ↓
+┌─────────────────┐
+│   Success! ✅   │  ← অর্ডার paid হয়ে যায়
+└─────────────────┘
+```
+
+---
+
+## 📖 ডকুমেন্টেশন
+
+| ডকুমেন্ট | বিবরণ |
+|----------|-------|
+| [📘 Installation Guide](docs/INTEGRATION_GUIDE.md) | সম্পূর্ণ ইনস্টলেশন ও সেটআপ গাইড |
+| [🎨 Checkout UI](docs/CHECKOUT_UI.md) | Ready-to-use চেকআউট পেজ ডিজাইন |
+| [📋 API Contract](docs/API_CONTRACT.md) | POS API স্পেসিফিকেশন |
+
+---
+
+## 🛒 Quick Example
+
+### Checkout Controller
 
 ```php
 use Illuminate\Support\Facades\Session;
@@ -44,8 +88,8 @@ public function checkout(Request $request)
 {
     $order = Order::create([
         'total' => 1250.00,
-        'status' => 'pending',
         'payment_method' => $request->payment_method,
+        'status' => 'pending',
     ]);
 
     Session::put("vendweave_order_{$order->id}", [
@@ -57,51 +101,32 @@ public function checkout(Request $request)
 }
 ```
 
-### 2. Listen for Events
+### Payment Events
 
 ```php
-// app/Providers/EventServiceProvider.php
+// EventServiceProvider.php
 use VendWeave\Gateway\Events\PaymentVerified;
 use VendWeave\Gateway\Events\PaymentFailed;
 
 protected $listen = [
-    PaymentVerified::class => [OnPaymentSuccess::class],
-    PaymentFailed::class   => [OnPaymentFailed::class],
+    PaymentVerified::class => [MarkOrderAsPaid::class],
+    PaymentFailed::class   => [HandleFailedPayment::class],
 ];
 ```
 
-### 3. Handle Success
+---
 
-```php
-// app/Listeners/OnPaymentSuccess.php
-public function handle(PaymentVerified $event)
-{
-    $event->order->update([
-        'status' => 'paid',
-        'transaction_id' => $event->verificationResult->getTransactionId(),
-        'paid_at' => now(),
-    ]);
-}
-```
+## ❌ Error Codes
 
-## Error Codes
+| Code | অর্থ | সমাধান |
+|------|------|--------|
+| `METHOD_MISMATCH` | ভুল পেমেন্ট মেথড | সিলেক্টেড মেথড দিয়ে পে করুন |
+| `AMOUNT_MISMATCH` | Amount ম্যাচ হয়নি | সঠিক amount পাঠান |
+| `STORE_MISMATCH` | স্টোর ম্যাচ হয়নি | `.env` তে store slug চেক করুন |
+| `TRANSACTION_USED` | TRX আগেই ব্যবহৃত | প্রতিটি TRX একবারই ব্যবহার হয় |
 
-| Code | Meaning | Solution |
-|------|---------|----------|
-| `METHOD_MISMATCH` | Payment method mismatch | User must pay with selected method |
-| `AMOUNT_MISMATCH` | Amount doesn't match | Paid amount must equal order total |
-| `STORE_MISMATCH` | Wrong store | Check `VENDWEAVE_STORE_SLUG` |
-| `TRANSACTION_USED` | Already used | Each TRX ID is single-use |
-| `401 Unauthorized` | Invalid credentials | Use General API Credentials |
+---
 
-## Documentation
-
-📖 **[Full Integration Guide](docs/INTEGRATION_GUIDE.md)** — Step-by-step setup with Laravel 12
-
-📋 **[API Contract](docs/API_CONTRACT.md)** — POS endpoint specifications
-
-📝 **[Release Notes](docs/RELEASE_NOTES_v1.9.1.md)** — v1.9.1 changelog
-
-## License
+## 📜 License
 
 MIT License. See [LICENSE](LICENSE) for details.

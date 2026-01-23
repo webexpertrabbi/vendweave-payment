@@ -1,36 +1,78 @@
 # VendWeave Laravel Integration Guide
 
-This guide is the official integration reference for VendWeave Laravel SDK (Laravel 12 compatible).
+সম্পূর্ণ ইনস্টলেশন ও সেটআপ গাইড - Laravel 10, 11, 12 সাপোর্টেড।
 
 ---
 
-## 📋 Prerequisites
+## 📋 প্রয়োজনীয়তা
 
-- Laravel 12.x
 - PHP 8.1+
+- Laravel 10.x / 11.x / 12.x
 - Composer
-- VendWeave POS account (API Key, Secret, Store Slug)
+- VendWeave POS অ্যাকাউন্ট (API Key, Secret, Store Slug)
 
 ---
 
-## 🗂️ Database Requirements (Optional)
+## ⚡ ইনস্টলেশন
 
-You can use your existing `orders` table. These fields are recommended for full automation, but the SDK can still operate without migrations.
+### Step 1: Package Install
+
+```bash
+composer require vendweave/payment
+```
+
+### Step 2: Config Publish
+
+```bash
+php artisan vendor:publish --tag=vendweave-config
+```
+
+এটি `config/vendweave.php` ফাইল তৈরি করবে।
+
+### Step 3: Environment Setup
+
+`.env` ফাইলে যোগ করুন:
+
+```env
+# API Credentials (VendWeave Dashboard থেকে নিন)
+VENDWEAVE_API_KEY=your_api_key
+VENDWEAVE_API_SECRET=your_api_secret
+VENDWEAVE_STORE_SLUG=your_store_slug
+VENDWEAVE_API_ENDPOINT=https://vendweave.com/api
+
+# Payment Numbers (Verification page এ দেখাবে)
+VENDWEAVE_BKASH_NUMBER="017XXXXXXXX"
+VENDWEAVE_NAGAD_NUMBER="018XXXXXXXX"
+VENDWEAVE_ROCKET_NUMBER="019XXXXXXXX"
+VENDWEAVE_UPAY_NUMBER="016XXXXXXXX"
+
+# Optional Settings
+VENDWEAVE_VERIFY_SSL=true
+VENDWEAVE_LOGGING=true
+```
+
+---
+
+## 🗂️ Database Setup (Optional)
+
+আপনার existing `orders` টেবিল ব্যবহার করতে পারেন। নিচের fields রাখলে ভালো হয়:
 
 ```php
 Schema::create('orders', function (Blueprint $table) {
     $table->id();
-    $table->decimal('total', 10, 2);         // Payment amount
-    $table->string('payment_method');         // bkash/nagad/rocket/upay
+    $table->decimal('total', 10, 2);           // পেমেন্ট amount
+    $table->string('payment_method');           // bkash/nagad/rocket/upay
     $table->string('status')->default('pending');
-    $table->string('trx_id')->nullable();     // Transaction ID from POS
+    $table->string('trx_id')->nullable();       // Transaction ID
+    $table->string('reference')->nullable();    // Payment Reference
+    $table->timestamp('paid_at')->nullable();
     $table->timestamps();
 });
 ```
 
-> 💡 Tip: If your field names differ, use the `order_mapping` config in `config/vendweave.php`.
+### Custom Field Mapping
 
-### Example Mapping
+আপনার field নাম ভিন্ন হলে config এ mapping করুন:
 
 ```php
 // config/vendweave.php
@@ -39,62 +81,50 @@ Schema::create('orders', function (Blueprint $table) {
     'amount' => 'grand_total',
     'payment_method' => 'gateway',
     'status' => 'order_status',
-    'trx_id' => 'transaction_ref',
 ],
 ```
 
 ---
 
-## ⚡ Installation
+## 🛒 Step-by-Step Integration
 
-### Option A: Install via Composer
+### Step 1: Checkout Form তৈরি করুন
 
-```bash
-composer require vendweave/payment
+```html
+<form action="{{ route('checkout.process') }}" method="POST">
+    @csrf
+    
+    <!-- Order Summary -->
+    <div class="order-summary">
+        <h3>Order Total: ৳{{ number_format($cart->total, 2) }}</h3>
+    </div>
+    
+    <!-- Payment Method Selection -->
+    <!-- 👉 সুন্দর UI এর জন্য দেখুন: docs/CHECKOUT_UI.md -->
+    <div class="payment-methods">
+        <label>
+            <input type="radio" name="payment_method" value="bkash" required>
+            bKash
+        </label>
+        <label>
+            <input type="radio" name="payment_method" value="nagad">
+            Nagad
+        </label>
+        <label>
+            <input type="radio" name="payment_method" value="rocket">
+            Rocket
+        </label>
+        <label>
+            <input type="radio" name="payment_method" value="upay">
+            Upay
+        </label>
+    </div>
+    
+    <button type="submit">Pay Now</button>
+</form>
 ```
 
-> 📝 **Upgrading from v1.0.0?** See [CHANGELOG.md](../CHANGELOG.md) migration guide.
-
-### Step 2: Publish Configuration
-
-```bash
-php artisan vendor:publish --tag=vendweave-config
-```
-
-This creates `config/vendweave.php`.
-
-### Option B: Local Path Repository (for development)
-
-```bash
-composer config repositories.vendweave path "../vendweave-payment"
-composer require vendweave/payment:@dev
-```
-
----
-
-## ⚙️ Environment Setup
-
-Add the following to your `.env`:
-
-```env
-VENDWEAVE_API_KEY=your_api_key
-VENDWEAVE_API_SECRET=your_api_secret
-VENDWEAVE_STORE_SLUG=your_store_slug
-VENDWEAVE_API_ENDPOINT=https://vendweave.com/api
-```
-
-| Variable                 | Description                | Example                     |
-| ------------------------ | -------------------------- | --------------------------- |
-| `VENDWEAVE_API_KEY`      | API Key                    | `vw_live_xxxx`              |
-| `VENDWEAVE_API_SECRET`   | API Secret                 | `secret_xxxx`               |
-| `VENDWEAVE_STORE_SLUG`   | Store slug                 | `my-fashion-store`          |
-| `VENDWEAVE_API_ENDPOINT` | POS API URL                | `https://vendweave.com/api` |
-
----
-
-## 🛒 Checkout Integration
-
-### CheckoutController.php
+### Step 2: CheckoutController তৈরি করুন
 
 ```php
 <?php
@@ -107,85 +137,66 @@ use Illuminate\Support\Facades\Session;
 
 class CheckoutController extends Controller
 {
-    public function checkout(Request $request)
+    public function process(Request $request)
     {
-        // Validate request
+        // Validate
         $validated = $request->validate([
-            'total' => 'required|numeric|min:1',
             'payment_method' => 'required|in:bkash,nagad,rocket,upay',
         ]);
 
-        // Create order
+        // Create Order
         $order = Order::create([
-            'total' => $validated['total'],
+            'user_id' => auth()->id(),
+            'total' => $this->getCartTotal(), // আপনার cart total
             'payment_method' => $validated['payment_method'],
             'status' => 'pending',
         ]);
 
-        // Store order data in session for verification page
+        // Session এ Order Data রাখুন (SDK এর জন্য প্রয়োজন)
         Session::put("vendweave_order_{$order->id}", [
             'amount' => $order->total,
             'payment_method' => $order->payment_method,
         ]);
 
-        // Redirect to VendWeave verification page
+        // VendWeave Verify Page এ Redirect
         return redirect()->route('vendweave.verify', ['order' => $order->id]);
+    }
+    
+    private function getCartTotal()
+    {
+        // আপনার cart total logic
+        return 1250.00;
     }
 }
 ```
 
----
-
-## 📄 Verification Page
-
-User visits:
-
-```
-/vendweave/verify/{order_id}
-```
-
-This page provides:
-
-| Feature      | Description                            |
-| ------------ | -------------------------------------- |
-| 💰 Amount    | Order amount দেখাবে                    |
-| 💳 Method    | Payment method (bKash/Nagad etc.)      |
-| 📝 TRX Input | Manual transaction ID input (optional) |
-| ⏱️ Timer     | 5 minute countdown timer               |
-| 🔄 Auto-Poll | প্রতি 2.5 সেকেন্ডে POS API poll করবে   |
-
----
-
-## ✅ Payment Success Handling
-
-### Option 1: Using Facade
+### Step 3: Routes যোগ করুন
 
 ```php
-use VendWeave\Gateway\Facades\VendWeave;
-
-$result = VendWeave::verify($orderId, $amount, $paymentMethod);
-
-if ($result->isConfirmed()) {
-    $order->update([
-        'status' => 'paid',
-        'trx_id' => $result->getTrxId(),
-    ]);
-
-    // Send confirmation email, update inventory, etc.
-}
-
-if ($result->isFailed()) {
-    $errorCode = $result->getErrorCode();
-    $errorMessage = $result->getErrorMessage();
-    // Log error, notify admin
-}
+// routes/web.php
+Route::post('/checkout', [CheckoutController::class, 'process'])->name('checkout.process');
+Route::get('/order/success/{order}', [OrderController::class, 'success'])->name('order.success');
+Route::get('/order/failed/{order}', [OrderController::class, 'failed'])->name('order.failed');
 ```
 
-### Option 2: Using Events (Recommended)
-
-Create listener in `app/Listeners/MarkOrderAsPaid.php`:
+### Step 4: Success/Failed Route Config
 
 ```php
+// config/vendweave.php
+'callbacks' => [
+    'success_route' => 'order.success',  // আপনার success route name
+    'failed_route' => 'order.failed',    // আপনার failed route name
+],
+```
+
+---
+
+## ✅ Payment Events Handle করুন
+
+### Event Listener তৈরি করুন
+
+```php
+// app/Listeners/MarkOrderAsPaid.php
 <?php
 
 namespace App\Listeners;
@@ -202,21 +213,52 @@ class MarkOrderAsPaid
         if ($order) {
             $order->update([
                 'status' => 'paid',
-                'trx_id' => $event->getTrxId(),
+                'trx_id' => $event->verificationResult->getTransactionId(),
+                'paid_at' => now(),
             ]);
 
-            // Additional actions:
-            // - Send email
-            // - Update inventory
-            // - Create invoice
+            // Additional Actions:
+            // - Email পাঠান
+            // - Inventory আপডেট করুন
+            // - Invoice তৈরি করুন
         }
     }
 }
 ```
 
-Register in `EventServiceProvider.php`:
+```php
+// app/Listeners/HandleFailedPayment.php
+<?php
+
+namespace App\Listeners;
+
+use App\Models\Order;
+use VendWeave\Gateway\Events\PaymentFailed;
+use Illuminate\Support\Facades\Log;
+
+class HandleFailedPayment
+{
+    public function handle(PaymentFailed $event): void
+    {
+        $order = Order::find($event->orderId);
+
+        if ($order) {
+            $order->update(['status' => 'failed']);
+        }
+
+        Log::warning('[VendWeave] Payment Failed', [
+            'order_id' => $event->orderId,
+            'error_code' => $event->verificationResult->getErrorCode(),
+            'error_message' => $event->verificationResult->getErrorMessage(),
+        ]);
+    }
+}
+```
+
+### EventServiceProvider এ Register করুন
 
 ```php
+// app/Providers/EventServiceProvider.php
 use VendWeave\Gateway\Events\PaymentVerified;
 use VendWeave\Gateway\Events\PaymentFailed;
 use App\Listeners\MarkOrderAsPaid;
@@ -234,206 +276,119 @@ protected $listen = [
 
 ---
 
+## 🛣️ Available Routes
+
+SDK নিজে থেকে এই routes তৈরি করে:
+
+| Route | Name | Method | Description |
+|-------|------|--------|-------------|
+| `/vendweave/verify/{order}` | `vendweave.verify` | GET | Verification Page |
+| `/vendweave/success/{order}` | `vendweave.success` | GET | Success Page |
+| `/vendweave/failed/{order}` | `vendweave.failed` | GET | Failed Page |
+| `/api/vendweave/poll/{order}` | `vendweave.poll` | GET | AJAX Polling |
+
+---
+
 ## 🔄 Payment Lifecycle
 
 ```
-┌──────────────┐
-│   Checkout   │  User creates order
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│ Verify Page  │  User sees payment instructions
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│  User Pays   │  User pays via bKash/Nagad app
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│  POS Polls   │  Package polls POS every 2.5s
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│ POS Confirm  │  POS confirms transaction
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│ Order Paid   │  Order marked as paid
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│ Success Page │  User sees confirmation
-└──────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      SDK Verification Flow                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   1. reserveReference()  →  POS এ reference register             │
+│            ↓                                                     │
+│   2. poll()              →  POS এ payment check                  │
+│            ↓                                                     │
+│   3. verify()            →  TRX ID দিয়ে verify                   │
+│            ↓                                                     │
+│   4. confirm()           →  Transaction lock/consume             │
+│            ↓                                                     │
+│   5. status = 'used'     →  ✅ SUCCESS REDIRECT                  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### ✅ Protocol-Aligned Verification Flow (WordPress-Equivalent)
+### Status Meanings
 
-The SDK follows the same POS contract lifecycle used by the WordPress plugin:
+| Status | অর্থ | Frontend Action |
+|--------|------|-----------------|
+| `pending` | পেমেন্ট আসেনি | Polling চলবে |
+| `verified` | Transaction পাওয়া গেছে | Polling চলবে |
+| `confirmed` | Verify হয়েছে | Polling চলবে |
+| `success` | Confirm হয়েছে | Polling চলবে |
+| `used` | সম্পূর্ণ ✅ | Success Redirect |
+| `failed` | ব্যর্থ | Failed Redirect |
 
-1. **Reserve Reference** (POS): reference is registered before polling.
-2. **Poll Transaction**: POS checks for incoming payment.
-3. **Verify Transaction**: if `trx_id` exists and poll stays pending, SDK escalates to verify.
-4. **Confirm**: POS returns `status=confirmed` only after verify endpoint.
-
-This ensures the Laravel SDK behaves exactly like the WordPress reference implementation.
-
-## ✅ POS Required Fields (Contract)
-
-These are the POS-required fields for each step:
-
-**Reserve Reference**
-- `payment_reference`
-- `payment_method`
-- `expected_amount`
-- `wc_order_id`
-
-**Poll Transaction**
-- `payment_reference`
-- `payment_method`
-- `expected_amount`
-- `wc_order_id`
-
-**Verify Transaction (Confirm)**
-- `trx_id`
-- `payment_reference`
-- `payment_method`
-- `expected_amount`
-- `wc_order_id`
+> ⚠️ **গুরুত্বপূর্ণ:** শুধুমাত্র `used` status এ success redirect হবে!
 
 ---
 
-## 🧭 Reference System (Optional)
-
-VendWeave SDK supports a **Reference Governance Engine** for replay prevention, expiry handling, and audit tracking.
-
-### ✅ Lifecycle
-
-```
-RESERVED → MATCHED → REPLAYED / CANCELLED → EXPIRED
-```
-
-- **RESERVED**: order এর জন্য reference reserve হয়
-- **MATCHED**: POS payment reference match হলে
-- **REPLAYED**: match হওয়ার পরে duplicate attempt ধরা পড়লে
-- **CANCELLED**: match হওয়ার আগেই cancel হলে
-- **EXPIRED**: নির্দিষ্ট সময়ের মধ্যে match না হলে
-
-### 🛡️ Replay Prevention
-
-Reference একবার **MATCHED** হলে পরের attempt স্বয়ংক্রিয়ভাবে block হবে এবং replay error দিবে।
-
-### ⏱️ Expiry Command
-
-Expiry চালাতে:
-
-```bash
-php artisan vendweave:expire-references
-```
-
-### 📊 Analytics & Audit Trail
-
-সব গুরুত্বপূর্ণ log field থাকবে:
-
-- `reference`
-- `status`
-- `order_id`
-- `store_id`
-- `expires_at`
-- `matched_at`
-- `replay_count`
-
-এই data analytics, reconciliation, এবং audit trail এ কাজে লাগবে।
-
----
-
-## 🎨 Custom Success/Failure Routes
-
-```php
-// config/vendweave.php
-
-'callbacks' => [
-    'success_route' => 'shop.order.complete',  // Your success route name
-    'failed_route' => 'shop.order.failed',     // Your failure route name
-],
-```
-
----
-
-## 🛣️ Available Routes
-
-| Route                          | Name                  | Method | Description       |
-| ------------------------------ | --------------------- | ------ | ----------------- |
-| `/vendweave/verify/{order}`    | `vendweave.verify`    | GET    | Verification page |
-| `/vendweave/success/{order}`   | `vendweave.success`   | GET    | Success page      |
-| `/vendweave/failed/{order}`    | `vendweave.failed`    | GET    | Failure page      |
-| `/vendweave/cancelled/{order}` | `vendweave.cancelled` | GET    | Cancelled page    |
-| `/api/vendweave/poll/{order}`  | `vendweave.poll`      | POST   | AJAX polling      |
-| `/api/vendweave/health`        | `vendweave.health`    | GET    | Health check      |
-
----
-
-## 🔧 Helper Class
+## 🔧 Helper Class ব্যবহার
 
 ```php
 use VendWeave\Gateway\VendWeaveHelper;
 
-// Prepare payment and get verification URL
+// Payment URL পেতে
 $url = VendWeaveHelper::preparePayment($orderId, $amount, 'bkash');
 return redirect($url);
 
-// Get available payment methods
+// Available Payment Methods
 $methods = VendWeaveHelper::getPaymentMethods();
-// Returns: ['bkash' => [...], 'nagad' => [...], ...]
+// ['bkash' => [...], 'nagad' => [...], ...]
 
-// Validate a payment method
+// Valid Payment Method চেক
 if (VendWeaveHelper::isValidPaymentMethod('nagad')) {
-    // Valid method
+    // Valid
 }
 
-// Clear order data from session
+// Session Data Clear
 VendWeaveHelper::clearOrderData($orderId);
 ```
 
 ---
 
-## ⚠️ Important Rules
+## ⚠️ গুরুত্বপূর্ণ নিয়ম
 
-> 🔴 **Rule 1**: Laravel কখনো payment decide করে না। VendWeave POS সবসময় authority।
-
-> 🔴 **Rule 2**: Amount exact match হতে হবে। ৳960.00 ≠ ৳960.50
-
-> 🔴 **Rule 3**: একই Transaction ID দুইবার ব্যবহার করা যাবে না।
-
-> 🔴 **Rule 4**: Store slug match না হলে transaction reject হবে।
+| নিয়ম | ব্যাখ্যা |
+|------|---------|
+| 🔴 Amount Exact Match | ৳960.00 ≠ ৳960.50 - exact amount পাঠাতে হবে |
+| 🔴 One TRX = One Order | একই Transaction ID দুইবার ব্যবহার করা যাবে না |
+| 🔴 Store Match | সঠিক store slug না হলে reject হবে |
+| 🔴 Method Match | bKash সিলেক্ট করলে bKash দিয়েই পে করতে হবে |
 
 ---
 
 ## 🐛 Troubleshooting
 
-| Problem                     | Solution                                 |
-| --------------------------- | ---------------------------------------- |
-| "INVALID_CREDENTIALS" error | Check `.env` API Key and Secret          |
-| "STORE_MISMATCH" error      | Verify `VENDWEAVE_STORE_SLUG` is correct |
-| "AMOUNT_MISMATCH" error     | Ensure order amount matches exactly      |
-| Polling not working         | Check JavaScript console for errors      |
-| Session data missing        | Verify session middleware is active      |
+| সমস্যা | সমাধান |
+|--------|--------|
+| "INVALID_CREDENTIALS" | `.env` তে API Key/Secret চেক করুন |
+| "STORE_MISMATCH" | `VENDWEAVE_STORE_SLUG` চেক করুন |
+| "AMOUNT_MISMATCH" | সঠিক amount পাঠান |
+| Polling কাজ করছে না | Browser Console এ error দেখুন |
+| Session data নেই | Session middleware active আছে কিনা দেখুন |
 
 ---
 
 ## 📝 Logging
-
-Enable logging in `.env`:
 
 ```env
 VENDWEAVE_LOGGING=true
 VENDWEAVE_LOG_CHANNEL=stack
 ```
 
-View logs:
+Log দেখতে:
 
 ```bash
 tail -f storage/logs/laravel.log | grep VendWeave
 ```
+
+---
+
+## 🎨 Next Step
+
+সুন্দর Checkout UI এর জন্য দেখুন: **[CHECKOUT_UI.md](CHECKOUT_UI.md)**
 
 ---
 
