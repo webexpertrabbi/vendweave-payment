@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.6] - 2026-01-23
+
+### ✅ Success Finalization Guard
+
+Frontend treats `success` as terminal success (same as `confirmed`) to prevent polling loops.
+
+---
+
 ## [1.9.5] - 2026-01-23
 
 ### ✅ Frontend Completion Guard (USED Status)

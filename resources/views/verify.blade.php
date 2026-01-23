@@ -588,6 +588,7 @@
                 
                 switch (data.status) {
                     case 'confirmed':
+                    case 'success':
                         handleSuccess(data);
                         break;
                     case 'pending':
