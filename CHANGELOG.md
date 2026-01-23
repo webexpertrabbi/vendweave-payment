@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.1] - 2026-01-24
+
+### 🖼️ Asset Publishing Support
+
+Payment gateway logos এখন artisan command দিয়ে publish করা যায়।
+
+### ✨ Added
+
+- `php artisan vendor:publish --tag=vendweave-assets` - Checkout page এ payment logos দেখানোর জন্য
+- Payment gateway logos: bKash, Nagad, Rocket, Upay
+- Modern checkout payment method UI component (documentation)
+
+### 📍 Published Assets Location
+
+```
+public/vendor/vendweave/images/
+├── vendweave-bkash.png
+├── vendweave-nagad.png
+├── vendweave-rocket.png
+└── vendweave-upay.png
+```
+
+### 📚 Documentation
+
+- Complete beginner-friendly integration guide
+- Checkout payment selector UI code
+- Troubleshooting section for assets
+
+---
+
 ## [1.10.0] - 2026-01-23
 
 ### 🚀 Laravel SDK Decoupling (Breaking Change)

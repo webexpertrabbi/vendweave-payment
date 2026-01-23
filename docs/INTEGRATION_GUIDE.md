@@ -49,9 +49,14 @@ composer require vendweave/payment
 
 # Config file publish
 php artisan vendor:publish --tag=vendweave-config
+
+# Assets publish (payment gateway logos)
+php artisan vendor:publish --tag=vendweave-assets
 ```
 
-✅ এতে `config/vendweave.php` ফাইল তৈরি হবে।
+✅ এতে:
+- `config/vendweave.php` ফাইল তৈরি হবে
+- `public/vendor/vendweave/images/` ফোল্ডারে payment gateway logos কপি হবে
 
 ---
 
@@ -137,7 +142,105 @@ php artisan migrate
 
 # 🎨 STEP 4: Checkout Page তৈরি করুন
 
-আপনার checkout page এ payment method selection যোগ করুন:
+আপনার checkout page এ payment method selection যোগ করুন। নিচে দুইটা option দেওয়া হলো:
+
+---
+
+## Option A: সুন্দর Payment Gateway UI (Recommended) ⭐
+
+আপনার checkout form এ "Buy Now" বা "Place Order" button এর **ঠিক উপরে** নিচের কোড পেস্ট করুন:
+
+```html
+<!-- VendWeave Payment Method Selector -->
+<div class="mb-3">
+    <label class="form-label mb-2">Payment Method</label>
+    <style>
+        .pm-card {
+            background: #fff;
+            border-radius: 10px;
+            border: 2px solid #e5e7eb;
+            box-shadow: 0 1px 4px 0 rgba(0,0,0,0.04);
+            transition: all 0.2s ease;
+            padding: 8px 12px;
+            cursor: pointer;
+            position: relative;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+        }
+        .pm-card:hover {
+            border-color: #d1d5db;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px 0 rgba(0,0,0,0.08);
+        }
+        .pm-card.selected {
+            border-color: var(--pm-color, #6366f1);
+            box-shadow: 0 0 0 3px var(--pm-color, #6366f1)22;
+            transform: translateY(-2px);
+        }
+        .pm-logo {
+            width: 28px;
+            height: 28px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+        .pm-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--pm-color, #6366f1);
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+    </style>
+    <div class="d-flex flex-row gap-2 justify-content-start">
+        @php
+            $pmList = [
+                'bkash' => ['label' => 'bKash', 'color' => '#D8005A', 'logo' => asset('vendor/vendweave/images/vendweave-bkash.png')],
+                'nagad' => ['label' => 'Nagad', 'color' => '#F9A825', 'logo' => asset('vendor/vendweave/images/vendweave-nagad.png')],
+                'rocket' => ['label' => 'Rocket', 'color' => '#7C3AED', 'logo' => asset('vendor/vendweave/images/vendweave-rocket.png')],
+                'upay' => ['label' => 'Upay', 'color' => '#00BFAE', 'logo' => asset('vendor/vendweave/images/vendweave-upay.png')],
+            ];
+        @endphp
+        @foreach($pmList as $key => $info)
+            <input type="radio" name="payment_method" value="{{ $key }}" id="pm_{{ $key }}" class="d-none" {{ old('payment_method') == $key ? 'checked' : '' }} required>
+            <label for="pm_{{ $key }}" class="pm-card" style="--pm-color: {{ $info['color'] }};">
+                <img src="{{ $info['logo'] }}" alt="{{ $info['label'] }} Logo" class="pm-logo" loading="lazy">
+                <span class="pm-label">{{ $info['label'] }}</span>
+            </label>
+        @endforeach
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const radios = document.querySelectorAll('input[name="payment_method"]');
+            const cards = document.querySelectorAll('.pm-card');
+            function updateSelection() {
+                cards.forEach((card, idx) => {
+                    card.classList.remove('selected');
+                    if(radios[idx].checked) card.classList.add('selected');
+                });
+            }
+            radios.forEach(radio => {
+                radio.addEventListener('change', updateSelection);
+            });
+            updateSelection();
+        });
+    </script>
+</div>
+<!-- End VendWeave Payment Method Selector -->
+```
+
+> ⚠️ **গুরুত্বপূর্ণ:** উপরের কোড কাজ করার জন্য আগে assets publish করতে হবে:
+> ```bash
+> php artisan vendor:publish --tag=vendweave-assets
+> ```
+> এতে `public/vendor/vendweave/images/` ফোল্ডারে payment gateway logos কপি হবে।
+
+---
+
+## Option B: সিম্পল Payment Gateway UI
+
+যদি Bootstrap বা fancy UI না চান, তাহলে এই simple version ব্যবহার করুন:
 
 ### ফাইল: `resources/views/checkout.blade.php`
 
@@ -636,6 +739,23 @@ class OrderController extends Controller
 | Config not found | `php artisan config:clear` চালান |
 | Routes not working | `php artisan route:clear` চালান |
 | Events not firing | Event register ঠিক আছে কিনা দেখুন |
+| **Payment logos দেখা যাচ্ছে না** | `php artisan vendor:publish --tag=vendweave-assets --force` চালান |
+| Images 404 error | `public/vendor/vendweave/images/` folder আছে কিনা দেখুন |
+
+### 🖼️ Payment Gateway Logos সমস্যা
+
+যদি checkout page এ payment gateway logos না দেখায়:
+
+```bash
+# Assets publish করুন
+php artisan vendor:publish --tag=vendweave-assets --force
+
+# Verify করুন
+ls public/vendor/vendweave/images/
+# Output: vendweave-bkash.png vendweave-nagad.png vendweave-rocket.png vendweave-upay.png
+```
+
+Browser এ test করুন: `http://yoursite.com/vendor/vendweave/images/vendweave-bkash.png`
 
 ---
 

@@ -88,11 +88,17 @@ class VendWeaveServiceProvider extends ServiceProvider
                 __DIR__ . '/../database/migrations' => database_path('migrations'),
             ], 'vendweave-migrations');
 
+            // Publish assets (payment gateway logos)
+            $this->publishes([
+                __DIR__ . '/../resources/images' => public_path('vendor/vendweave/images'),
+            ], 'vendweave-assets');
+
             // Publish all
             $this->publishes([
                 __DIR__ . '/../config/vendweave.php' => config_path('vendweave.php'),
                 __DIR__ . '/../resources/views' => resource_path('views/vendor/vendweave'),
                 __DIR__ . '/../database/migrations' => database_path('migrations'),
+                __DIR__ . '/../resources/images' => public_path('vendor/vendweave/images'),
             ], 'vendweave');
         }
     }

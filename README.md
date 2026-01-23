@@ -16,6 +16,9 @@ composer require vendweave/payment
 
 # Config publish
 php artisan vendor:publish --tag=vendweave-config
+
+# Assets publish (payment gateway logos)
+php artisan vendor:publish --tag=vendweave-assets
 ```
 
 ## 🔑 .env Setup
