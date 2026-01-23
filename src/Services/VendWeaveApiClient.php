@@ -15,10 +15,11 @@ use VendWeave\Gateway\Exceptions\InvalidCredentialsException;
  * This service handles all direct API communication with the POS system.
  * It manages authentication headers, request/response cycles, and error handling.
  * 
- * API Endpoints:
- * - POST /api/v1/woocommerce/poll-transaction
- * - POST /api/v1/woocommerce/verify-transaction
- * - POST /api/stores/{store_slug}/sms-receiver
+ * API Endpoints (Laravel SDK Namespace):
+ * - POST /api/sdk/laravel/reserve-reference
+ * - POST /api/sdk/laravel/poll
+ * - POST /api/sdk/laravel/verify
+ * - POST /api/sdk/laravel/confirm
  */
 class VendWeaveApiClient
 {
@@ -100,7 +101,7 @@ class VendWeaveApiClient
 
         // Reference-based logging (before request for debugging)
         $this->log('info', 'Poll Transaction', [
-            'endpoint' => '/api/v1/woocommerce/poll-transaction',
+            'endpoint' => '/api/sdk/laravel/poll',
             'reference' => $reference,
             'payment_reference' => $reference,
             'order_id' => $orderId,
@@ -108,7 +109,7 @@ class VendWeaveApiClient
             'store_slug' => $this->storeSlug,
         ]);
 
-        $response = $this->request('POST', '/api/v1/woocommerce/poll-transaction', $params);
+        $response = $this->request('POST', '/api/sdk/laravel/poll', $params);
         
         // DEBUG LOGGING START
         $this->log('info', 'Poll Transaction Debug', [
@@ -175,7 +176,7 @@ class VendWeaveApiClient
         }
 
         $this->log('info', 'Verify Transaction', [
-            'endpoint' => '/api/v1/woocommerce/verify-transaction',
+            'endpoint' => '/api/sdk/laravel/verify',
             'reference' => $reference,
             'payment_reference' => $reference,
             'order_id' => $orderId,
@@ -184,7 +185,7 @@ class VendWeaveApiClient
             'store_slug' => $this->storeSlug,
         ]);
 
-        $response = $this->request('POST', '/api/v1/woocommerce/verify-transaction', $params);
+        $response = $this->request('POST', '/api/sdk/laravel/verify', $params);
         
         // Normalize response structure (List → Object, auto-detect fields)
         $normalized = $this->normalizeResponse($response);
@@ -223,14 +224,14 @@ class VendWeaveApiClient
         }
 
         $this->log('info', 'Confirm Transaction', [
-            'endpoint' => '/api/v1/woocommerce/confirm-transaction',
+            'endpoint' => '/api/sdk/laravel/confirm',
             'reference' => $reference,
             'payment_reference' => $reference,
             'trx_id' => $trxId,
             'store_slug' => $this->storeSlug,
         ]);
 
-        $response = $this->request('POST', '/api/v1/woocommerce/confirm-transaction', $params);
+        $response = $this->request('POST', '/api/sdk/laravel/confirm', $params);
 
         return $this->normalizeResponse($response);
     }
@@ -262,7 +263,7 @@ class VendWeaveApiClient
         ]);
 
         $this->log('info', 'Reserve Reference', [
-            'endpoint' => '/api/v1/woocommerce/reserve-reference',
+            'endpoint' => '/api/sdk/laravel/reserve-reference',
             'reference' => $reference,
             'payment_reference' => $reference,
             'order_id' => $orderId,
@@ -270,7 +271,7 @@ class VendWeaveApiClient
             'store_slug' => $this->storeSlug,
         ]);
 
-        $response = $this->request('POST', '/api/v1/woocommerce/reserve-reference', $params);
+        $response = $this->request('POST', '/api/sdk/laravel/reserve-reference', $params);
 
         return $this->normalizeResponse($response);
     }

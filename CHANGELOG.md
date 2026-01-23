@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.10.0] - 2026-01-23
+
+### 🚀 Laravel SDK Decoupling (Breaking Change)
+
+Complete decoupling from WordPress/WooCommerce ecosystem. SDK now uses dedicated Laravel API namespace.
+
+### 🔌 API Namespace Migration
+
+| Old Endpoint                             | New Endpoint                        |
+| ---------------------------------------- | ----------------------------------- |
+| `/api/v1/woocommerce/reserve-reference`  | `/api/sdk/laravel/reserve-reference`|
+| `/api/v1/woocommerce/poll-transaction`   | `/api/sdk/laravel/poll`             |
+| `/api/v1/woocommerce/verify-transaction` | `/api/sdk/laravel/verify`           |
+| `/api/v1/woocommerce/confirm-transaction`| `/api/sdk/laravel/confirm`          |
+
+### 🔁 SDK Verification Flow (Final)
+
+```
+reserveReference() → poll() → verify() → confirm() → status=used → SUCCESS
+```
+
+### 🚦 Redirect Rules (Frontend)
+
+| POS Status    | Action                |
+| ------------- | --------------------- |
+| `pending`     | Stay on verify page   |
+| `verified`    | Keep polling          |
+| `confirmed`   | Keep polling ❌       |
+| `success`     | Keep polling ❌       |
+| `used`        | ✅ Redirect success   |
+| `failed`      | ✅ Redirect failed    |
+
+### 🧯 Defensive Rules
+
+- SDK never guesses `trx_id`
+- SDK never auto-confirms by amount
+- SDK never hides POS inconsistencies
+- SDK = protocol follower, not fixer
+
+### 🧼 Cleanup
+
+- Removed `phpunit.xml` and test sandbox files
+- Package is now clean, production-only
+
+---
+
+## [1.9.9] - 2026-01-23
+
+### ✅ Confirm Escalation Fix (Success/Confirmed from Poll)
+
+**Root Cause:** SDK only called `confirm-transaction` when poll returned `pending` → verify → confirm path. If POS directly returned `success/confirmed` from poll, confirm was NEVER called.
+
+### 🐛 Fixed
+
+- Added confirm-transaction escalation when poll returns `success` or `confirmed` directly
+- Ensures lifecycle v2 completion: poll → confirm → used
+- Now matches WordPress behavior (orders properly reach `used` status)
+
+---
+
 ## [1.9.8] - 2026-01-23
 
 ### ✅ Confirm-Transaction Enforcement

@@ -19,30 +19,38 @@ X-Store-Secret: {API_SECRET}
 
 ---
 
-## Endpoints
+## Endpoints (Laravel SDK Namespace v1.10.0+)
 
 ### Reserve Reference
 
 ```
-POST /api/v1/woocommerce/reserve-reference
+POST /api/sdk/laravel/reserve-reference
 ```
 
 ### Poll Transaction
 
 ```
-POST /api/v1/woocommerce/poll-transaction
+POST /api/sdk/laravel/poll
 ```
 
-### Verify Transaction (Confirmation)
+### Verify Transaction
 
 ```
-POST /api/v1/woocommerce/verify-transaction
+POST /api/sdk/laravel/verify
 ```
 
-### SMS Receiver
+### Confirm Transaction
 
 ```
-POST /api/stores/{store_slug}/sms-receiver
+POST /api/sdk/laravel/confirm
+```
+
+---
+
+## SDK Verification Flow
+
+```
+reserveReference() → poll() → verify() → confirm() → status=used → SUCCESS
 ```
 
 ---
@@ -56,7 +64,7 @@ POST /api/stores/{store_slug}/sms-receiver
 | payment_reference  | string  | Yes      | Reference code (e.g., VW5067) |
 | payment_method     | string  | Yes      | bkash/nagad/rocket/upay      |
 | expected_amount    | decimal | Yes      | Payment amount                |
-| wc_order_id        | string  | Yes      | Order ID                      |
+| order_id           | string  | Yes      | Order ID                      |
 
 ### Poll Transaction
 
@@ -65,9 +73,9 @@ POST /api/stores/{store_slug}/sms-receiver
 | payment_reference  | string  | Yes      | Reference code          |
 | payment_method     | string  | Yes      | bkash/nagad/rocket/upay |
 | expected_amount    | decimal | Yes      | Payment amount          |
-| wc_order_id        | string  | Yes      | Order ID                |
+| order_id           | string  | Yes      | Order ID                |
 
-### Verify Transaction (Confirmation)
+### Verify Transaction
 
 | Field              | Type    | Required | Description             |
 | ------------------ | ------- | -------- | ----------------------- |
@@ -75,7 +83,14 @@ POST /api/stores/{store_slug}/sms-receiver
 | payment_reference  | string  | Yes      | Reference code          |
 | payment_method     | string  | Yes      | bkash/nagad/rocket/upay |
 | expected_amount    | decimal | Yes      | Payment amount          |
-| wc_order_id        | string  | Yes      | Order ID                |
+| order_id           | string  | Yes      | Order ID                |
+
+### Confirm Transaction
+
+| Field              | Type    | Required | Description             |
+| ------------------ | ------- | -------- | ----------------------- |
+| trx_id             | string  | Yes      | Transaction ID          |
+| payment_reference  | string  | Yes      | Reference code          |
 
 ---
 
@@ -83,26 +98,42 @@ POST /api/stores/{store_slug}/sms-receiver
 
 ```json
 {
-  "status": "confirmed",
+  "status": "used",
   "trx_id": "BKA123XYZ",
   "payment_reference": "VW5067",
   "payment_method": "bkash",
   "expected_amount": 960.0,
-  "wc_order_id": "45"
+  "order_id": "45"
 }
 ```
 
 ---
 
-## Status Lifecycle
+## Status Lifecycle (POS v2)
 
-| Status      | Description                                |
-| ----------- | ------------------------------------------ |
-| `pending`   | Transaction awaiting confirmation          |
-| `confirmed` | Transaction verified successfully          |
-| `failed`    | Transaction failed                         |
-| `used`      | Transaction already used for another order |
-| `expired`   | Transaction has expired                    |
+| Status      | Description                                    | Frontend Action |
+| ----------- | ---------------------------------------------- | --------------- |
+| `pending`   | Transaction awaiting payment                   | Keep polling    |
+| `verified`  | Transaction found, awaiting confirm            | Keep polling    |
+| `confirmed` | Transaction verified (SDK must call confirm)   | Keep polling    |
+| `success`   | Same as confirmed (SDK must call confirm)      | Keep polling    |
+| `used`      | Transaction consumed/locked ✅                 | **Redirect success** |
+| `failed`    | Transaction failed                             | **Redirect failed** |
+| `expired`   | Transaction has expired                        | **Redirect failed** |
+
+---
+
+## Redirect Rules
+
+| POS Status    | Action                |
+| ------------- | --------------------- |
+| `pending`     | Stay on verify page   |
+| `verified`    | Keep polling          |
+| `confirmed`   | Keep polling ❌ NO redirect |
+| `success`     | Keep polling ❌ NO redirect |
+| `used`        | ✅ Redirect success   |
+| `failed`      | ✅ Redirect failed    |
+| `expired`     | ✅ Redirect failed    |
 
 ---
 

@@ -583,19 +583,35 @@
             }
             
             // Handle API response
+            // REDIRECT RULES (v1.10.0):
+            // - pending: stay on verify page
+            // - verified: keep polling (transaction seen, awaiting confirm)
+            // - confirmed/success: keep polling (awaiting used status)
+            // - used: redirect to success ✅
+            // - failed/expired: redirect to failed ✅
             function handleResponse(data) {
                 hideError();
                 
                 switch (data.status) {
                     case 'confirmed':
                     case 'success':
+                        // DO NOT redirect - keep polling until 'used'
                         updateStatus('pending', 'Confirming transaction...');
+                        break;
+                    case 'verified':
+                        // Transaction found, awaiting confirmation
+                        updateStatus('pending', 'Transaction verified, confirming...');
                         break;
                     case 'pending':
                         updateStatus('pending', 'Waiting for payment...');
                         break;
                     case 'used':
+                        // ONLY redirect on 'used' status ✅
                         handleSuccess(data);
+                        break;
+                    case 'failed':
+                        // Redirect to failed ✅
+                        handleError(data.error_code || 'FAILED', data.error_message || 'Payment failed');
                         break;
                     case 'expired':
                         handleError('EXPIRED', 'This transaction has expired');

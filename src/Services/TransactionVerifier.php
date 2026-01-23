@@ -58,6 +58,40 @@ class TransactionVerifier
             $status = $response['status'] ?? 'unknown';
             $resolvedTrxId = $trxId ?? ($response['trx_id'] ?? null);
 
+            // If POS returns success/confirmed directly, escalate to confirm-transaction
+            if (in_array($status, ['success', 'confirmed']) && $resolvedTrxId) {
+                Log::info('[VendWeave] Escalating to confirm-transaction (poll returned success/confirmed)', [
+                    'reference' => $expectedReference,
+                    'trx_id' => $resolvedTrxId,
+                    'status' => $status,
+                    'order_id' => $orderId,
+                ]);
+
+                $confirmResponse = $this->apiClient->confirmTransaction(
+                    $resolvedTrxId,
+                    $expectedReference
+                );
+
+                // Enrich response to preserve context for finalization
+                if (!isset($confirmResponse['trx_id'])) {
+                    $confirmResponse['trx_id'] = $resolvedTrxId;
+                }
+                if (!isset($confirmResponse['reference']) && $expectedReference !== null) {
+                    $confirmResponse['reference'] = $expectedReference;
+                }
+                if (!isset($confirmResponse['order_id'])) {
+                    $confirmResponse['order_id'] = $orderId;
+                }
+
+                return $this->processResponse(
+                    $confirmResponse,
+                    $expectedAmount,
+                    $expectedMethod,
+                    $orderId,
+                    $expectedReference
+                );
+            }
+
             // If POS is still pending but we have a TRX ID, escalate to verify
             if ($status === 'pending' && $resolvedTrxId) {
                 $verifyResponse = $this->apiClient->verifyTransaction(
