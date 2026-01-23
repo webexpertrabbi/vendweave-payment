@@ -70,6 +70,11 @@ class TransactionVerifier
 
                 // NEW: Confirm phase required after verify returns confirmed
                 if (($verifyResponse['status'] ?? null) === 'confirmed') {
+                    Log::info('[VendWeave] Calling confirm-transaction', [
+                        'reference' => $expectedReference,
+                        'trx_id' => $resolvedTrxId,
+                        'previous_status' => $verifyResponse['raw_status'] ?? $verifyResponse['status'] ?? null,
+                    ]);
                     $confirmResponse = $this->apiClient->confirmTransaction(
                         $resolvedTrxId,
                         $expectedReference

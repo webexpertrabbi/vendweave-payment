@@ -595,7 +595,7 @@
                         updateStatus('pending', 'Waiting for payment...');
                         break;
                     case 'used':
-                        handleError('USED', 'This transaction has already been used');
+                        handleSuccess(data);
                         break;
                     case 'expired':
                         handleError('EXPIRED', 'This transaction has expired');
