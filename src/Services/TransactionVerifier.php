@@ -68,6 +68,33 @@ class TransactionVerifier
                     $expectedReference
                 );
 
+                // NEW: Confirm phase required after verify returns confirmed
+                if (($verifyResponse['status'] ?? null) === 'confirmed') {
+                    $confirmResponse = $this->apiClient->confirmTransaction(
+                        $resolvedTrxId,
+                        $expectedReference
+                    );
+
+                    // Enrich response to preserve context for finalization
+                    if (!isset($confirmResponse['trx_id'])) {
+                        $confirmResponse['trx_id'] = $resolvedTrxId;
+                    }
+                    if (!isset($confirmResponse['reference']) && $expectedReference !== null) {
+                        $confirmResponse['reference'] = $expectedReference;
+                    }
+                    if (!isset($confirmResponse['order_id'])) {
+                        $confirmResponse['order_id'] = $orderId;
+                    }
+
+                    return $this->processResponse(
+                        $confirmResponse,
+                        $expectedAmount,
+                        $expectedMethod,
+                        $orderId,
+                        $expectedReference
+                    );
+                }
+
                 return $this->processResponse(
                     $verifyResponse,
                     $expectedAmount,

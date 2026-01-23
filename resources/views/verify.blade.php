@@ -589,7 +589,7 @@
                 switch (data.status) {
                     case 'confirmed':
                     case 'success':
-                        handleSuccess(data);
+                        updateStatus('pending', 'Confirming transaction...');
                         break;
                     case 'pending':
                         updateStatus('pending', 'Waiting for payment...');

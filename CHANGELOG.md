@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.9.7] - 2026-01-23
+
+### ✅ POS Lifecycle v2 (Confirm Phase)
+
+Implements mandatory confirm-transaction step and finalizes only after `used`.
+
+### ✨ Added
+
+- New confirm phase: `POST /api/v1/woocommerce/confirm-transaction`
+- Finalizes order only after confirm returns `used`
+- Frontend no longer treats `confirmed/success` as terminal
+
+---
+
 ## [1.9.6] - 2026-01-23
 
 ### ✅ Success Finalization Guard

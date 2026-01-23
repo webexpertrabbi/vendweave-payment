@@ -201,6 +201,41 @@ class VendWeaveApiClient
     }
 
     /**
+     * Confirm a verified transaction with the POS API.
+     * Used to consume/lock the transaction after verify returns confirmed.
+     *
+     * @param string $trxId
+     * @param string|null $reference Payment reference for matching
+     * @return array Raw API response data
+     * @throws ApiConnectionException
+     * @throws InvalidCredentialsException
+     */
+    public function confirmTransaction(string $trxId, ?string $reference = null): array
+    {
+        $this->validateCredentials();
+
+        $params = $this->normalizeApiPayload([
+            'trx_id' => $trxId,
+        ]);
+
+        if ($reference !== null) {
+            $params['reference'] = $reference;
+        }
+
+        $this->log('info', 'Confirm Transaction', [
+            'endpoint' => '/api/v1/woocommerce/confirm-transaction',
+            'reference' => $reference,
+            'payment_reference' => $reference,
+            'trx_id' => $trxId,
+            'store_slug' => $this->storeSlug,
+        ]);
+
+        $response = $this->request('POST', '/api/v1/woocommerce/confirm-transaction', $params);
+
+        return $this->normalizeResponse($response);
+    }
+
+    /**
      * Reserve a payment reference with the POS API.
      * 
      * @param string $orderId
