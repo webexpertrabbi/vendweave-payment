@@ -58,6 +58,19 @@ class TransactionVerifier
             $status = $response['status'] ?? 'unknown';
             $resolvedTrxId = $trxId ?? ($response['trx_id'] ?? null);
 
+            // VALID POS states for Laravel API: pending, verified, used
+            // If POS returns success/confirmed, it's an invalid state for Laravel SDK
+            if (in_array($status, ['success', 'confirmed'])) {
+                Log::warning('[VendWeave] Invalid POS state for Laravel API - received legacy status', [
+                    'status' => $status,
+                    'expected' => ['pending', 'verified', 'used'],
+                    'order_id' => $orderId,
+                    'reference' => $expectedReference,
+                    'trx_id' => $resolvedTrxId,
+                    'action' => 'Escalating to confirm-transaction',
+                ]);
+            }
+
             // If POS returns success/confirmed directly, escalate to confirm-transaction
             if (in_array($status, ['success', 'confirmed']) && $resolvedTrxId) {
                 Log::info('[VendWeave] Escalating to confirm-transaction (poll returned success/confirmed)', [
@@ -150,6 +163,17 @@ class TransactionVerifier
                     'status' => 'pending',
                     'order_id' => $orderId,
                     'awaiting_trx_id_from_pos' => true,
+                ]);
+            }
+
+            // Log error for completely unexpected/unknown states
+            if (!in_array($status, ['pending', 'verified', 'used', 'success', 'confirmed', 'failed', 'expired'])) {
+                Log::error('[VendWeave] Unknown POS status received', [
+                    'status' => $status,
+                    'expected' => ['pending', 'verified', 'used', 'failed', 'expired'],
+                    'order_id' => $orderId,
+                    'reference' => $expectedReference,
+                    'raw_response' => $response,
                 ]);
             }
 
