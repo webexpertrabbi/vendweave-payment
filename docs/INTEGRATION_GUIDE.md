@@ -88,43 +88,9 @@ Schema::create('orders', function (Blueprint $table) {
 
 ## 🛒 Step-by-Step Integration
 
-### Step 1: Checkout Form তৈরি করুন
+### Step 1: CheckoutController তৈরি করুন
 
-```html
-<form action="{{ route('checkout.process') }}" method="POST">
-    @csrf
-    
-    <!-- Order Summary -->
-    <div class="order-summary">
-        <h3>Order Total: ৳{{ number_format($cart->total, 2) }}</h3>
-    </div>
-    
-    <!-- Payment Method Selection -->
-    <!-- 👉 সুন্দর UI এর জন্য দেখুন: docs/CHECKOUT_UI.md -->
-    <div class="payment-methods">
-        <label>
-            <input type="radio" name="payment_method" value="bkash" required>
-            bKash
-        </label>
-        <label>
-            <input type="radio" name="payment_method" value="nagad">
-            Nagad
-        </label>
-        <label>
-            <input type="radio" name="payment_method" value="rocket">
-            Rocket
-        </label>
-        <label>
-            <input type="radio" name="payment_method" value="upay">
-            Upay
-        </label>
-    </div>
-    
-    <button type="submit">Pay Now</button>
-</form>
-```
-
-### Step 2: CheckoutController তৈরি করুন
+আপনার নিজের checkout page এ পেমেন্ট মেথড সিলেক্ট করার পর নিচের কোড দিয়ে VendWeave verify page এ redirect করুন:
 
 ```php
 <?php
@@ -383,12 +349,6 @@ Log দেখতে:
 ```bash
 tail -f storage/logs/laravel.log | grep VendWeave
 ```
-
----
-
-## 🎨 Next Step
-
-সুন্দর Checkout UI এর জন্য দেখুন: **[CHECKOUT_UI.md](CHECKOUT_UI.md)**
 
 ---
 

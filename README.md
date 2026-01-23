@@ -72,7 +72,6 @@ VENDWEAVE_UPAY_NUMBER="016XXXXXXXX"
 | ডকুমেন্ট | বিবরণ |
 |----------|-------|
 | [📘 Installation Guide](docs/INTEGRATION_GUIDE.md) | সম্পূর্ণ ইনস্টলেশন ও সেটআপ গাইড |
-| [🎨 Checkout UI](docs/CHECKOUT_UI.md) | Ready-to-use চেকআউট পেজ ডিজাইন |
 | [📋 API Contract](docs/API_CONTRACT.md) | POS API স্পেসিফিকেশন |
 
 ---
