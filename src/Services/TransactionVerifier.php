@@ -82,7 +82,8 @@ class TransactionVerifier
 
                 $confirmResponse = $this->apiClient->confirmTransaction(
                     $resolvedTrxId,
-                    $expectedReference
+                    $expectedReference,
+                    $orderId
                 );
 
                 // Enrich response to preserve context for finalization
@@ -115,8 +116,10 @@ class TransactionVerifier
                     $expectedReference
                 );
 
-                // NEW: Confirm phase required after verify returns confirmed
-                if (($verifyResponse['status'] ?? null) === 'confirmed') {
+                // NEW: Confirm phase required after verify returns verified or confirmed
+                // Laravel SDK returns 'verified', WooCommerce might return 'confirmed'
+                $verifyStatus = $verifyResponse['status'] ?? null;
+                if (in_array($verifyStatus, ['verified', 'confirmed'])) {
                     Log::info('[VendWeave] Calling confirm-transaction', [
                         'reference' => $expectedReference,
                         'trx_id' => $resolvedTrxId,
@@ -124,7 +127,8 @@ class TransactionVerifier
                     ]);
                     $confirmResponse = $this->apiClient->confirmTransaction(
                         $resolvedTrxId,
-                        $expectedReference
+                        $expectedReference,
+                        $orderId
                     );
 
                     // Enrich response to preserve context for finalization
@@ -257,17 +261,20 @@ class TransactionVerifier
 
             case 'used':
                 if ($this->isUsedForCurrentOrder($response, $orderId, $expectedReference)) {
-                    Log::info('[VendWeave] Used status matched current order, treating as confirmed', [
+                    // Payment already confirmed for THIS order - return success directly
+                    // Skip governance checks - this is an idempotent retry (page refresh, etc.)
+                    Log::info('[VendWeave] Used status matched current order - returning confirmed (idempotent)', [
                         'order_id' => $orderId,
                         'reference' => $expectedReference,
                         'trx_id' => $response['trx_id'] ?? null,
                     ]);
-                    return $this->validateConfirmedTransaction(
-                        $response,
-                        $expectedAmount,
-                        $expectedMethod,
-                        $orderId,
-                        $expectedReference
+                    
+                    // Direct success - no need to re-validate
+                    return VerificationResult::confirmed(
+                        $response['trx_id'] ?? 'unknown',
+                        (float) ($response['amount'] ?? $expectedAmount),
+                        $response['payment_method'] ?? $expectedMethod,
+                        $response['store_slug'] ?? $this->apiClient->getStoreSlug() ?? 'unknown'
                     );
                 }
 
@@ -520,7 +527,17 @@ class TransactionVerifier
 
             switch ($governedStatus) {
                 case ReferenceGovernor::STATUS_MATCHED:
+                    // MATCHED means this exact order already used this reference - idempotent success
+                    // This is NOT a replay, it's the same order requesting again (page refresh, etc.)
+                    Log::info('[VendWeave] Reference already matched for this order - allowing idempotent verification', [
+                        'reference' => $referenceForGovernance,
+                        'order_id' => $orderId,
+                        'status' => $governedStatus,
+                    ]);
+                    break; // Allow to proceed - same order, same reference = valid
+                    
                 case ReferenceGovernor::STATUS_REPLAYED:
+                    // REPLAYED means a DIFFERENT order tried to use this reference
                     return VerificationResult::failed(
                         'REFERENCE_REPLAY',
                         "Payment reference {$referenceForGovernance} has already been used"

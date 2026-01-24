@@ -586,17 +586,20 @@
             // REDIRECT RULES (v1.10.0):
             // - pending: stay on verify page
             // - verified: keep polling (transaction seen, awaiting confirm)
-            // - confirmed/success: keep polling (awaiting used status)
-            // - used: redirect to success ✅
+            // - confirmed/used: redirect to success ✅
             // - failed/expired: redirect to failed ✅
             function handleResponse(data) {
                 hideError();
                 
                 switch (data.status) {
                     case 'confirmed':
+                    case 'used':
+                        // Payment verified and consumed - redirect to success ✅
+                        handleSuccess(data);
+                        break;
                     case 'success':
-                        // DO NOT redirect - keep polling until 'used'
-                        updateStatus('pending', 'Confirming transaction...');
+                        // Legacy status - treat as confirmed
+                        handleSuccess(data);
                         break;
                     case 'verified':
                         // Transaction found, awaiting confirmation
@@ -605,19 +608,12 @@
                     case 'pending':
                         updateStatus('pending', 'Waiting for payment...');
                         break;
-                    case 'used':
-                        // ONLY redirect on 'used' status ✅
-                        handleSuccess(data);
-                        break;
                     case 'failed':
                         // Redirect to failed ✅
                         handleError(data.error_code || 'FAILED', data.error_message || 'Payment failed');
                         break;
                     case 'expired':
                         handleError('EXPIRED', 'This transaction has expired');
-                        break;
-                    case 'failed':
-                        handleError(data.error_code, data.error_message);
                         break;
                 }
             }
