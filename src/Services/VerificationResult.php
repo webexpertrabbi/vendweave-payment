@@ -189,7 +189,6 @@ final class VerificationResult
     {
         return in_array($this->status, [
             self::STATUS_FAILED,
-            self::STATUS_USED,
             self::STATUS_EXPIRED,
         ]);
     }

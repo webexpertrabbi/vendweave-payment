@@ -207,11 +207,12 @@ class VendWeaveApiClient
      *
      * @param string $trxId
      * @param string|null $reference Payment reference for matching
+     * @param string|null $orderId Order ID for context
      * @return array Raw API response data
      * @throws ApiConnectionException
      * @throws InvalidCredentialsException
      */
-    public function confirmTransaction(string $trxId, ?string $reference = null): array
+    public function confirmTransaction(string $trxId, ?string $reference = null, ?string $orderId = null): array
     {
         $this->validateCredentials();
 
@@ -221,6 +222,11 @@ class VendWeaveApiClient
 
         if ($reference !== null) {
             $params['reference'] = $reference;
+            $params['payment_reference'] = $reference;
+        }
+
+        if ($orderId !== null) {
+            $params['order_id'] = $orderId;
         }
 
         $this->log('info', 'Confirm Transaction', [
@@ -228,6 +234,7 @@ class VendWeaveApiClient
             'reference' => $reference,
             'payment_reference' => $reference,
             'trx_id' => $trxId,
+            'order_id' => $orderId,
             'store_slug' => $this->storeSlug,
         ]);
 
@@ -434,6 +441,7 @@ class VendWeaveApiClient
         $mapping = config('vendweave.api_param_mapping', [
             'order_id' => 'wc_order_id',
             'amount' => 'expected_amount',
+            'reference' => 'payment_reference',
         ]);
 
         $normalized = [];
@@ -463,6 +471,12 @@ class VendWeaveApiClient
         if (!isset($normalized['expected_amount']) && isset($normalized['amount'])) {
             $normalized['expected_amount'] = $normalized['amount'];
             $this->log('debug', 'Auto-mapped amount → expected_amount');
+        }
+
+        // If payment_reference not set but reference exists, auto-map it
+        if (!isset($normalized['payment_reference']) && isset($normalized['reference'])) {
+            $normalized['payment_reference'] = $normalized['reference'];
+            $this->log('debug', 'Auto-mapped reference → payment_reference');
         }
 
         return $normalized;
