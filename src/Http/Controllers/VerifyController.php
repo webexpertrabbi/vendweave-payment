@@ -50,6 +50,30 @@ class VerifyController extends BaseController
         $elapsed = now()->diffInSeconds($startTime);
         $timeRemaining = max(0, $timeoutDuration - $elapsed);
 
+        $localPolling = [
+            'interval_ms' => (int) config('vendweave.polling.interval_ms', 2000),
+            'max_attempts' => (int) config('vendweave.polling.max_attempts', 300),
+            'timeout_seconds' => (int) config('vendweave.polling.timeout_seconds', 600),
+        ];
+
+        $posPolling = null;
+        $pollingMismatch = false;
+
+        try {
+            $client = app(\VendWeave\Gateway\Services\VendWeaveApiClient::class);
+            $posPolling = $client->getPollingLimits();
+
+            if (is_array($posPolling)) {
+                $pollingMismatch =
+                    (int) ($posPolling['interval_seconds'] ?? 0) !== (int) round($localPolling['interval_ms'] / 1000)
+                    || (int) ($posPolling['max_requests'] ?? 0) !== (int) $localPolling['max_attempts']
+                    || (int) ($posPolling['timeout_seconds'] ?? 0) !== (int) $localPolling['timeout_seconds'];
+            }
+        } catch (\Throwable $e) {
+            $posPolling = null;
+            $pollingMismatch = false;
+        }
+
         return view('vendweave::verify', [
             'orderId' => $order,
             'amount' => $orderData['amount'],
@@ -61,6 +85,9 @@ class VerifyController extends BaseController
             'pollingInterval' => config('vendweave.polling.interval_ms', 2500),
             'maxAttempts' => config('vendweave.polling.max_attempts', 120),
             'timeout' => $timeRemaining, // Dynamic remaining time
+            'localPolling' => $localPolling,
+            'posPolling' => $posPolling,
+            'pollingMismatch' => $pollingMismatch,
         ]);
     }
 

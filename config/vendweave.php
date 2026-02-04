@@ -74,9 +74,9 @@ return [
     */
 
     'polling' => [
-        'interval_ms' => 2500,          // Poll every 2.5 seconds
-        'max_attempts' => 120,          // Maximum 120 attempts (5 minutes)
-        'timeout_seconds' => 300,       // Overall timeout in seconds
+        'interval_ms' => 2000,          // Poll every 2 seconds
+        'max_attempts' => 300,          // Maximum 300 attempts (10 minutes)
+        'timeout_seconds' => 600,       // Overall timeout in seconds
     ],
 
     /*

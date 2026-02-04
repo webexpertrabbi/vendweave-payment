@@ -284,6 +284,22 @@ class VendWeaveApiClient
     }
 
     /**
+     * Fetch server polling limits for Laravel SDK.
+     *
+     * @return array
+     * @throws ApiConnectionException
+     * @throws InvalidCredentialsException
+     */
+    public function getPollingLimits(): array
+    {
+        $this->validateCredentials();
+
+        $response = $this->request('GET', '/api/sdk/laravel/polling-limits');
+
+        return $this->normalizeResponse($response);
+    }
+
+    /**
      * Get the configured store slug.
      */
     public function getStoreSlug(): ?string

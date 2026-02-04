@@ -332,6 +332,21 @@
             color: var(--danger);
             display: none;
         }
+
+        /* Notice */
+        .notice-box {
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            color: var(--warning);
+        }
+
+        .notice-box strong {
+            color: #fbbf24;
+        }
         
         /* Footer */
         .footer {
@@ -417,6 +432,17 @@
                 <div class="reference-note">Send money with this reference in the note/message field</div>
             </div>
             @endif
+
+            @if(($pollingMismatch ?? false) && !empty($posPolling))
+            <div class="notice-box">
+                <strong>Polling settings mismatch:</strong>
+                Your current client settings differ from POS limits and may be rate-limited.
+                <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">
+                    Local: {{ (int) round(($localPolling['interval_ms'] ?? 0) / 1000) }}s / {{ (int) ($localPolling['max_attempts'] ?? 0) }} requests / {{ (int) ($localPolling['timeout_seconds'] ?? 0) }}s<br>
+                    POS: {{ (int) ($posPolling['interval_seconds'] ?? 0) }}s / {{ (int) ($posPolling['max_requests'] ?? 0) }} requests / {{ (int) ($posPolling['timeout_seconds'] ?? 0) }}s
+                </div>
+            </div>
+            @endif
             
             <!-- Status -->
             <div id="status-bar" class="status-bar">
@@ -478,11 +504,11 @@
                 cancelUrl: @json($cancelUrl),
                 pollingInterval: {{ $pollingInterval }},
                 maxAttempts: {{ $maxAttempts }},
-                timeoutSeconds: 300 // Fixed 5 minutes
+                timeoutSeconds: {{ $timeout }} // Remaining time from server session
             };
             
             let pollCount = 0;
-            let timeRemaining = config.timeoutSeconds; // Start at 300 seconds (5:00)
+            let timeRemaining = config.timeoutSeconds; // Start at remaining time
             let pollTimer = null;
             let countdownTimer = null;
             let isPolling = false;
@@ -515,6 +541,10 @@
             
             async function poll() {
                 pollCount++;
+                if (pollCount > config.maxAttempts) {
+                    handleTimeout();
+                    return;
+                }
                 if (timeRemaining <= 0) { handleTimeout(); return; }
                 
                 try {
@@ -584,7 +614,7 @@
                 updateStatus('failed', 'Payment Timed Out');
                 
                 // Build fail URL with reason
-                const failReason = encodeURIComponent('Payment verification timed out after 5 minutes. No payment was received within the allowed time.');
+                const failReason = encodeURIComponent('Payment verification timed out after 10 minutes. No payment was received within the allowed time.');
                 const failUrl = config.cancelUrl + (config.cancelUrl.includes('?') ? '&' : '?') + 
                     'status=failed&reason=timeout&message=' + failReason;
                 
