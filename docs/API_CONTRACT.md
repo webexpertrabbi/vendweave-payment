@@ -80,7 +80,7 @@ reserveReference() → poll() → verify() → confirm() → status=used → SUC
 | Field              | Type    | Required | Description             |
 | ------------------ | ------- | -------- | ----------------------- |
 | trx_id             | string  | Yes      | Transaction ID          |
-| payment_reference  | string  | Yes      | Reference code          |
+| payment_reference  | string  | No       | Reference code (optional in trx fallback mode) |
 | payment_method     | string  | Yes      | bkash/nagad/rocket/upay |
 | expected_amount    | decimal | Yes      | Payment amount          |
 | order_id           | string  | Yes      | Order ID                |
@@ -90,7 +90,24 @@ reserveReference() → poll() → verify() → confirm() → status=used → SUC
 | Field              | Type    | Required | Description             |
 | ------------------ | ------- | -------- | ----------------------- |
 | trx_id             | string  | Yes      | Transaction ID          |
-| payment_reference  | string  | Yes      | Reference code          |
+| payment_reference  | string  | No       | Reference code (SDK uses resolved reference when available) |
+
+---
+
+## TRX Fallback Verification (Manual)
+
+If user enters a wrong reference or no reference, SDK can still verify manually using:
+
+- trx_id
+- payment_method
+- expected_amount
+- order_id + store scope
+
+Behavior:
+
+- SDK first tries provided reference (if any).
+- On reference mismatch/missing error with trx_id present, SDK retries verify without reference.
+- Confirm step uses resolved reference returned by POS (if present).
 
 ---
 

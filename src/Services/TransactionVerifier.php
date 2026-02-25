@@ -80,9 +80,11 @@ class TransactionVerifier
                     'order_id' => $orderId,
                 ]);
 
+                $resolvedReferenceForConfirm = $this->resolveReferenceForConfirm($response, $expectedReference);
+
                 $confirmResponse = $this->apiClient->confirmTransaction(
                     $resolvedTrxId,
-                    $expectedReference,
+                    $resolvedReferenceForConfirm,
                     $orderId
                 );
 
@@ -90,8 +92,8 @@ class TransactionVerifier
                 if (!isset($confirmResponse['trx_id'])) {
                     $confirmResponse['trx_id'] = $resolvedTrxId;
                 }
-                if (!isset($confirmResponse['reference']) && $expectedReference !== null) {
-                    $confirmResponse['reference'] = $expectedReference;
+                if (!isset($confirmResponse['reference']) && $resolvedReferenceForConfirm !== null) {
+                    $confirmResponse['reference'] = $resolvedReferenceForConfirm;
                 }
                 if (!isset($confirmResponse['order_id'])) {
                     $confirmResponse['order_id'] = $orderId;
@@ -102,12 +104,14 @@ class TransactionVerifier
                     $expectedAmount,
                     $expectedMethod,
                     $orderId,
-                    $expectedReference
+                    $resolvedReferenceForConfirm
                 );
             }
 
             // If POS is still pending but we have a TRX ID, escalate to verify
             if ($status === 'pending' && $resolvedTrxId) {
+                $referenceForValidation = $expectedReference;
+
                 $verifyResponse = $this->apiClient->verifyTransaction(
                     $orderId,
                     $expectedAmount,
@@ -116,18 +120,40 @@ class TransactionVerifier
                     $expectedReference
                 );
 
+                if ($expectedReference !== null && $this->shouldAttemptReferenceFallback($verifyResponse)) {
+                    Log::warning('[VendWeave] Verify returned reference-related failure, retrying without reference', [
+                        'order_id' => $orderId,
+                        'trx_id' => $resolvedTrxId,
+                        'expected_reference' => $expectedReference,
+                        'error_code' => $verifyResponse['error_code'] ?? null,
+                        'reference_status' => $verifyResponse['reference_status'] ?? null,
+                    ]);
+
+                    $verifyResponse = $this->apiClient->verifyTransaction(
+                        $orderId,
+                        $expectedAmount,
+                        $expectedMethod,
+                        $resolvedTrxId,
+                        null
+                    );
+
+                    $referenceForValidation = null;
+                }
+
                 // NEW: Confirm phase required after verify returns verified or confirmed
                 // Laravel SDK returns 'verified', WooCommerce might return 'confirmed'
                 $verifyStatus = $verifyResponse['status'] ?? null;
                 if (in_array($verifyStatus, ['verified', 'confirmed'])) {
+                    $resolvedReferenceForConfirm = $this->resolveReferenceForConfirm($verifyResponse, $expectedReference);
+
                     Log::info('[VendWeave] Calling confirm-transaction', [
-                        'reference' => $expectedReference,
+                        'reference' => $resolvedReferenceForConfirm,
                         'trx_id' => $resolvedTrxId,
                         'previous_status' => $verifyResponse['raw_status'] ?? $verifyResponse['status'] ?? null,
                     ]);
                     $confirmResponse = $this->apiClient->confirmTransaction(
                         $resolvedTrxId,
-                        $expectedReference,
+                        $resolvedReferenceForConfirm,
                         $orderId
                     );
 
@@ -135,8 +161,8 @@ class TransactionVerifier
                     if (!isset($confirmResponse['trx_id'])) {
                         $confirmResponse['trx_id'] = $resolvedTrxId;
                     }
-                    if (!isset($confirmResponse['reference']) && $expectedReference !== null) {
-                        $confirmResponse['reference'] = $expectedReference;
+                    if (!isset($confirmResponse['reference']) && $resolvedReferenceForConfirm !== null) {
+                        $confirmResponse['reference'] = $resolvedReferenceForConfirm;
                     }
                     if (!isset($confirmResponse['order_id'])) {
                         $confirmResponse['order_id'] = $orderId;
@@ -147,7 +173,7 @@ class TransactionVerifier
                         $expectedAmount,
                         $expectedMethod,
                         $orderId,
-                        $expectedReference
+                        $resolvedReferenceForConfirm
                     );
                 }
 
@@ -156,7 +182,61 @@ class TransactionVerifier
                     $expectedAmount,
                     $expectedMethod,
                     $orderId,
-                    $expectedReference
+                    $referenceForValidation
+                );
+            }
+
+            if ($resolvedTrxId && $expectedReference !== null && $status === 'failed' && $this->shouldAttemptReferenceFallback($response)) {
+                Log::warning('[VendWeave] Poll returned reference-related failure, retrying verify without reference', [
+                    'order_id' => $orderId,
+                    'trx_id' => $resolvedTrxId,
+                    'expected_reference' => $expectedReference,
+                    'error_code' => $response['error_code'] ?? null,
+                    'reference_status' => $response['reference_status'] ?? null,
+                ]);
+
+                $verifyResponse = $this->apiClient->verifyTransaction(
+                    $orderId,
+                    $expectedAmount,
+                    $expectedMethod,
+                    $resolvedTrxId,
+                    null
+                );
+
+                $verifyStatus = $verifyResponse['status'] ?? null;
+                if (in_array($verifyStatus, ['verified', 'confirmed'])) {
+                    $resolvedReferenceForConfirm = $this->resolveReferenceForConfirm($verifyResponse, null);
+                    $confirmResponse = $this->apiClient->confirmTransaction(
+                        $resolvedTrxId,
+                        $resolvedReferenceForConfirm,
+                        $orderId
+                    );
+
+                    if (!isset($confirmResponse['trx_id'])) {
+                        $confirmResponse['trx_id'] = $resolvedTrxId;
+                    }
+                    if (!isset($confirmResponse['reference']) && $resolvedReferenceForConfirm !== null) {
+                        $confirmResponse['reference'] = $resolvedReferenceForConfirm;
+                    }
+                    if (!isset($confirmResponse['order_id'])) {
+                        $confirmResponse['order_id'] = $orderId;
+                    }
+
+                    return $this->processResponse(
+                        $confirmResponse,
+                        $expectedAmount,
+                        $expectedMethod,
+                        $orderId,
+                        $resolvedReferenceForConfirm
+                    );
+                }
+
+                return $this->processResponse(
+                    $verifyResponse,
+                    $expectedAmount,
+                    $expectedMethod,
+                    $orderId,
+                    null
                 );
             }
 
@@ -626,5 +706,34 @@ class TransactionVerifier
         $receivedRounded = round($received, 2);
 
         return $expectedRounded === $receivedRounded;
+    }
+
+    /**
+     * Resolve reference to use during confirm.
+     */
+    private function resolveReferenceForConfirm(array $response, ?string $fallbackReference = null): ?string
+    {
+        if (!empty($response['payment_reference'])) {
+            return (string) $response['payment_reference'];
+        }
+
+        if (!empty($response['reference'])) {
+            return (string) $response['reference'];
+        }
+
+        return $fallbackReference;
+    }
+
+    /**
+     * Determine whether verify response indicates reference-only failure and
+     * should be retried without reference (trx fallback mode).
+     */
+    private function shouldAttemptReferenceFallback(array $response): bool
+    {
+        $errorCode = strtoupper((string) ($response['error_code'] ?? ''));
+        $referenceStatus = strtolower((string) ($response['reference_status'] ?? ''));
+
+        return in_array($errorCode, ['REFERENCE_MISMATCH', 'REFERENCE_MISSING'], true)
+            || in_array($referenceStatus, ['mismatched', 'missing'], true);
     }
 }
