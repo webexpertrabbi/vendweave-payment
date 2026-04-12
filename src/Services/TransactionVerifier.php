@@ -364,6 +364,12 @@ class TransactionVerifier
                 return VerificationResult::expired($response['trx_id'] ?? 'unknown');
 
             case 'failed':
+                if ($this->isRetryablePollingFailure($response)) {
+                    return VerificationResult::pending(
+                        $response['message'] ?? 'Rate limit reached. Retrying verification...'
+                    );
+                }
+
                 return VerificationResult::failed(
                     'TRANSACTION_FAILED',
                     $response['message'] ?? 'Transaction failed'
@@ -388,6 +394,23 @@ class TransactionVerifier
                 ]);
                 return VerificationResult::pending('Transaction status pending verification');
         }
+    }
+
+    /**
+     * Treat transient polling failures as retryable to avoid false checkout failures.
+     */
+    private function isRetryablePollingFailure(array $response): bool
+    {
+        $httpStatus = (int) ($response['_http_status'] ?? 0);
+        $message = strtolower((string) ($response['message'] ?? ''));
+
+        if ($httpStatus !== 429 && !str_contains($message, 'too many requests')) {
+            return false;
+        }
+
+        return str_contains($message, 'too many requests')
+            || str_contains($message, 'wait before retrying')
+            || str_contains($message, 'rate limit');
     }
 
     /**
