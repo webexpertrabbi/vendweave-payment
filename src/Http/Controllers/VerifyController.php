@@ -40,21 +40,13 @@ class VerifyController extends BaseController
             );
         }
 
-        // Initialize or retrieve start time for persistent timer
-        $timerSessionKey = "vendweave_timer_{$order}";
-        if (!session()->has($timerSessionKey)) {
-             session([$timerSessionKey => now()]);
-        }
-        $startTime = session($timerSessionKey);
-        $timeoutDuration = config('vendweave.polling.timeout_seconds', 300);
-        $elapsed = now()->diffInSeconds($startTime);
-        $timeRemaining = max(0, $timeoutDuration - $elapsed);
-
         $localPolling = [
             'interval_ms' => (int) config('vendweave.polling.interval_ms', 2000),
             'max_attempts' => (int) config('vendweave.polling.max_attempts', 300),
             'timeout_seconds' => (int) config('vendweave.polling.timeout_seconds', 600),
         ];
+
+        $effectivePolling = $localPolling;
 
         $posPolling = null;
         $pollingMismatch = false;
@@ -64,15 +56,43 @@ class VerifyController extends BaseController
             $posPolling = $client->getPollingLimits();
 
             if (is_array($posPolling)) {
+                $serverIntervalSeconds = (int) ($posPolling['interval_seconds'] ?? 0);
+                $serverMaxRequests = (int) ($posPolling['max_requests'] ?? 0);
+                $serverTimeoutSeconds = (int) ($posPolling['timeout_seconds'] ?? 0);
+
                 $pollingMismatch =
-                    (int) ($posPolling['interval_seconds'] ?? 0) !== (int) round($localPolling['interval_ms'] / 1000)
-                    || (int) ($posPolling['max_requests'] ?? 0) !== (int) $localPolling['max_attempts']
-                    || (int) ($posPolling['timeout_seconds'] ?? 0) !== (int) $localPolling['timeout_seconds'];
+                    $serverIntervalSeconds !== (int) round($localPolling['interval_ms'] / 1000)
+                    || $serverMaxRequests !== (int) $localPolling['max_attempts']
+                    || $serverTimeoutSeconds !== (int) $localPolling['timeout_seconds'];
+
+                // Use POS limits as the runtime source of truth when available.
+                if ($serverIntervalSeconds > 0) {
+                    $effectivePolling['interval_ms'] = $serverIntervalSeconds * 1000;
+                }
+
+                if ($serverMaxRequests > 0) {
+                    $effectivePolling['max_attempts'] = $serverMaxRequests;
+                }
+
+                if ($serverTimeoutSeconds > 0) {
+                    $effectivePolling['timeout_seconds'] = $serverTimeoutSeconds;
+                }
             }
         } catch (\Throwable $e) {
             $posPolling = null;
             $pollingMismatch = false;
         }
+
+        // Initialize or retrieve start time for persistent timer
+        $timerSessionKey = "vendweave_timer_{$order}";
+        if (!session()->has($timerSessionKey)) {
+             session([$timerSessionKey => now()]);
+        }
+
+        $startTime = session($timerSessionKey);
+        $timeoutDuration = (int) ($effectivePolling['timeout_seconds'] ?? $localPolling['timeout_seconds']);
+        $elapsed = now()->diffInSeconds($startTime);
+        $timeRemaining = max(0, $timeoutDuration - $elapsed);
 
         return view('vendweave::verify', [
             'orderId' => $order,
@@ -82,8 +102,8 @@ class VerifyController extends BaseController
             'reference' => $orderData['reference'] ?? null,
             'pollUrl' => route('vendweave.poll', ['order' => $order]),
             'cancelUrl' => route('vendweave.cancelled', ['order' => $order]),
-            'pollingInterval' => config('vendweave.polling.interval_ms', 2500),
-            'maxAttempts' => config('vendweave.polling.max_attempts', 120),
+            'pollingInterval' => (int) ($effectivePolling['interval_ms'] ?? $localPolling['interval_ms']),
+            'maxAttempts' => (int) ($effectivePolling['max_attempts'] ?? $localPolling['max_attempts']),
             'timeout' => $timeRemaining, // Dynamic remaining time
             'localPolling' => $localPolling,
             'posPolling' => $posPolling,

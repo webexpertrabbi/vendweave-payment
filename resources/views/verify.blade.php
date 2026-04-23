@@ -512,6 +512,7 @@
             let pollTimer = null;
             let countdownTimer = null;
             let isPolling = false;
+            let pollInFlight = false;
             let pageLoadTime = Date.now();
             
             const statusBar = document.getElementById('status-bar');
@@ -528,24 +529,55 @@
             function startPolling() {
                 if (isPolling) return;
                 isPolling = true;
-                pollTimer = setInterval(poll, config.pollingInterval);
-                countdownTimer = setInterval(updateCountdown, 1000);
-                poll();
+
+                if (!countdownTimer) {
+                    countdownTimer = setInterval(updateCountdown, 1000);
+                }
+
+                scheduleNextPoll(0);
             }
             
             function stopPolling() {
                 isPolling = false;
-                clearInterval(pollTimer);
+                pollInFlight = false;
+                clearTimeout(pollTimer);
                 clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+
+            function scheduleNextPoll(delayMs = config.pollingInterval) {
+                clearTimeout(pollTimer);
+
+                if (!isPolling) {
+                    return;
+                }
+
+                pollTimer = setTimeout(poll, Math.max(0, delayMs));
+            }
+
+            function getRetryDelayMs(retryAfterSeconds) {
+                const parsedRetry = Number.parseInt(retryAfterSeconds, 10);
+
+                if (Number.isFinite(parsedRetry) && parsedRetry > 0) {
+                    return Math.max(config.pollingInterval, parsedRetry * 1000);
+                }
+
+                return config.pollingInterval;
             }
             
             async function poll() {
+                if (!isPolling || pollInFlight) {
+                    return;
+                }
+
                 pollCount++;
                 if (pollCount > config.maxAttempts) {
                     handleTimeout();
                     return;
                 }
                 if (timeRemaining <= 0) { handleTimeout(); return; }
+
+                pollInFlight = true;
                 
                 try {
                     const params = new URLSearchParams({
@@ -561,17 +593,42 @@
                         method: 'GET',
                         headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
                     });
-                    
-                    const data = await response.json();
+
+                    let data = {};
+
+                    try {
+                        data = await response.json();
+                    } catch (parseError) {
+                        data = {};
+                    }
+
+                    if (response.status === 429) {
+                        const retryDelayMs = getRetryDelayMs(data.retry_after_seconds);
+                        updateStatus('pending', data.message || 'Rate limit reached. Waiting before retry...');
+                        hideError();
+                        scheduleNextPoll(retryDelayMs);
+                        return;
+                    }
+
+                    if (!response.ok && (!data.status || typeof data.status !== 'string')) {
+                        showError('Connection error. Retrying...');
+                        scheduleNextPoll(config.pollingInterval);
+                        return;
+                    }
+
                     handleResponse(data);
                 } catch (error) {
                     console.error('Poll error:', error);
                     showError('Connection error. Retrying...');
+                    scheduleNextPoll(config.pollingInterval);
+                } finally {
+                    pollInFlight = false;
                 }
             }
             
             function handleResponse(data) {
                 hideError();
+
                 switch (data.status) {
                     case 'confirmed':
                     case 'used':
@@ -579,16 +636,32 @@
                         handleSuccess(data);
                         break;
                     case 'verified':
-                        updateStatus('pending', 'Confirming transaction...');
+                        updateStatus('pending', data.message || 'Confirming transaction...');
+                        scheduleNextPoll(config.pollingInterval);
                         break;
                     case 'pending':
-                        updateStatus('pending', 'Waiting for payment...');
+                        updateStatus('pending', data.message || 'Waiting for payment...');
+                        scheduleNextPoll(config.pollingInterval);
                         break;
-                    case 'failed':
-                        handleError(data.error_code || 'FAILED', data.error_message || 'Payment failed');
+                    case 'failed': {
+                        const failedMessage = data.error_message || data.message || 'Payment failed';
+
+                        if (/too many requests|wait before retrying|rate limit/i.test(String(failedMessage))) {
+                            updateStatus('pending', 'Waiting for payment...');
+                            hideError();
+                            scheduleNextPoll(getRetryDelayMs(data.retry_after_seconds));
+                            break;
+                        }
+
+                        handleError(data.error_code || 'FAILED', failedMessage);
                         break;
+                    }
                     case 'expired':
                         handleError('EXPIRED', 'Transaction has expired');
+                        break;
+                    default:
+                        updateStatus('pending', 'Waiting for payment...');
+                        scheduleNextPoll(config.pollingInterval);
                         break;
                 }
             }
@@ -662,6 +735,19 @@
             
             function showError(msg) { errorBox.textContent = msg; errorBox.style.display = 'block'; }
             function hideError() { errorBox.style.display = 'none'; }
+
+            function requestImmediatePoll() {
+                if (!isPolling) {
+                    startPolling();
+                    return;
+                }
+
+                if (pollInFlight) {
+                    return;
+                }
+
+                scheduleNextPoll(0);
+            }
             
             verifyBtn.addEventListener('click', function() {
                 if (this.textContent === 'Retry') {
@@ -672,7 +758,7 @@
                     updateStatus('pending', 'Verifying payment...');
                     startPolling();
                 } else {
-                    poll();
+                    requestImmediatePoll();
                 }
             });
             
@@ -684,7 +770,12 @@
                 window.location.href = cancelUrl;
             });
             
-            trxInput.addEventListener('keypress', function(e) { if (e.key === 'Enter') poll(); });
+            trxInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    requestImmediatePoll();
+                }
+            });
             
             // Handle page visibility - timer keeps running even when minimized
             document.addEventListener('visibilitychange', function() {
