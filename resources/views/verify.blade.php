@@ -457,7 +457,7 @@
             <div class="grid-2">
                 <div class="input-group">
                     <label for="trx-id">Transaction ID (Optional)</label>
-                    <input type="text" id="trx-id" placeholder="Enter your {{ ucfirst($paymentMethod) }} TRX ID" autocomplete="off">
+                    <input type="text" id="trx-id" placeholder="Enter your {{ ucfirst($paymentMethod) }} TRX ID" autocomplete="off" spellcheck="false">
                 </div>
                 
                 @if(isset($paymentMethodInfo['number']))
@@ -502,6 +502,7 @@
                 reference: @json($reference ?? null),
                 pollUrl: @json($pollUrl),
                 cancelUrl: @json($cancelUrl),
+                manualVerifyUrl: @json(route('vendweave.manual-verify', ['order' => $orderId])),
                 pollingInterval: {{ $pollingInterval }},
                 maxAttempts: {{ $maxAttempts }},
                 timeoutSeconds: {{ $timeout }} // Remaining time from server session
@@ -749,19 +750,117 @@
                 scheduleNextPoll(0);
             }
             
+            // ── Update button label when TRX ID field changes ─────────────
+            function updateVerifyBtnLabel() {
+                const hasTrx = trxInput.value.trim() !== '';
+                if (verifyBtn.dataset.state === 'retry') return; // keep Retry label
+                verifyBtn.textContent = hasTrx ? 'Verify with TRX ID' : 'Verify Manually';
+            }
+
+            trxInput.addEventListener('input', updateVerifyBtnLabel);
+
+            // ── Manual TRX verification (no reference) ──────────────────────
+            async function manualVerify() {
+                const trxId = trxInput.value.trim();
+                if (!trxId) {
+                    showError('Please enter your Transaction ID first.');
+                    return;
+                }
+
+                stopPolling();
+                verifyBtn.disabled = true;
+                trxInput.disabled  = true;
+                updateStatus('pending', 'Verifying Transaction ID...');
+                hideError();
+
+                try {
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]');
+                    const response = await fetch(config.manualVerifyUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Accept':           'application/json',
+                            'Content-Type':     'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN':     csrfToken ? csrfToken.content : '',
+                        },
+                        body: JSON.stringify({
+                            trx_id:         trxId,
+                            amount:         config.amount,
+                            payment_method: config.paymentMethod,
+                        }),
+                    });
+
+                    let data = {};
+                    try { data = await response.json(); } catch (_) {}
+
+                    const status = data.status ?? 'failed';
+
+                    if (status === 'confirmed' || status === 'success') {
+                        updateStatus('confirmed', 'Payment Verified!');
+                        setTimeout(() => { if (data.redirect_url) window.location.href = data.redirect_url; }, 1200);
+                        return;
+                    }
+
+                    if (status === 'pending') {
+                        // Transaction found but still processing — resume polling
+                        updateStatus('pending', data.message || 'Payment is still processing. Resuming auto-check...');
+                        trxInput.disabled  = false;
+                        verifyBtn.disabled = false;
+                        startPolling();
+                        return;
+                    }
+
+                    // Failed / mismatch / not found
+                    const errMsg = data.error_message || data.message || 'Transaction could not be verified.';
+                    updateStatus('failed', 'Verification Failed');
+                    showError(errMsg);
+                    verifyBtn.dataset.state = 'retry';
+                    verifyBtn.textContent   = 'Retry';
+                    verifyBtn.disabled      = false;
+                    trxInput.disabled       = false;
+
+                } catch (err) {
+                    console.error('Manual verify error:', err);
+                    updateStatus('failed', 'Verification Failed');
+                    showError('Connection error. Please try again.');
+                    verifyBtn.dataset.state = 'retry';
+                    verifyBtn.textContent   = 'Retry';
+                    verifyBtn.disabled      = false;
+                    trxInput.disabled       = false;
+                }
+            }
+
+            // ── Button click handler ─────────────────────────────────────────
             verifyBtn.addEventListener('click', function() {
-                if (this.textContent === 'Retry') {
-                    // Reset only poll count, not timer (timer continues from page load)
+                const trxId = trxInput.value.trim();
+
+                if (this.dataset.state === 'retry') {
+                    // Reset state
+                    delete this.dataset.state;
                     pollCount = 0;
-                    this.textContent = 'Verify Manually';
                     hideError();
                     updateStatus('pending', 'Verifying payment...');
-                    startPolling();
+
+                    if (trxId) {
+                        // User kept the TRX ID — go straight to manual verify
+                        verifyBtn.textContent = 'Verify with TRX ID';
+                        manualVerify();
+                    } else {
+                        verifyBtn.textContent = 'Verify Manually';
+                        startPolling();
+                    }
+                    return;
+                }
+
+                if (trxId) {
+                    // TRX ID present → use manual (reference-less) verification
+                    manualVerify();
                 } else {
+                    // No TRX ID → trigger auto-poll immediately
                     requestImmediatePoll();
                 }
             });
-            
+
             cancelBtn.addEventListener('click', function() {
                 stopPolling();
                 const cancelReason = encodeURIComponent('Payment was cancelled by the user.');
@@ -769,11 +868,16 @@
                     'status=cancelled&reason=user_cancelled&message=' + cancelReason;
                 window.location.href = cancelUrl;
             });
-            
+
             trxInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    requestImmediatePoll();
+                    const trxId = trxInput.value.trim();
+                    if (trxId) {
+                        manualVerify();
+                    } else {
+                        requestImmediatePoll();
+                    }
                 }
             });
             

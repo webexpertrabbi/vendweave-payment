@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use VendWeave\Gateway\Http\Controllers\PollController;
+use VendWeave\Gateway\Http\Controllers\ManualVerifyController;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,3 +20,12 @@ Route::middleware(['throttle:vendweave-poll'])
 
 Route::get('/health', [PollController::class, 'health'])
     ->name('vendweave.health');
+
+/**
+ * Manual TRX verification (no reference required).
+ * Used when the user paid without including the reference number.
+ * Matches by: TRX ID + amount + payment method + store slug.
+ */
+Route::post('/manual-verify/{order}', [ManualVerifyController::class, 'verify'])
+    ->name('vendweave.manual-verify');
+

@@ -278,6 +278,244 @@ class TransactionVerifier
     }
 
     /**
+     * Verify a transaction using only TRX ID (no reference required).
+     *
+     * This is used for manual fallback verification when the user did not
+     * include the reference number in their payment. Only TRX ID, amount,
+     * payment method and store slug are matched — no reference check.
+     *
+     * @param string $orderId
+     * @param float $expectedAmount
+     * @param string $expectedMethod
+     * @param string $trxId
+     * @return VerificationResult
+     */
+    public function verifyByTrxId(
+        string $orderId,
+        float $expectedAmount,
+        string $expectedMethod,
+        string $trxId
+    ): VerificationResult {
+        try {
+            Log::info('[VendWeave] Manual TRX verification initiated (no reference)', [
+                'order_id'       => $orderId,
+                'trx_id'         => $trxId,
+                'amount'         => $expectedAmount,
+                'payment_method' => $expectedMethod,
+            ]);
+
+            // Step 1 — Call verify without any reference
+            $verifyResponse = $this->apiClient->verifyTransaction(
+                $orderId,
+                $expectedAmount,
+                $expectedMethod,
+                $trxId,
+                null  // no reference
+            );
+
+            $verifyStatus = $verifyResponse['status'] ?? 'unknown';
+
+            Log::info('[VendWeave] Manual TRX verify response', [
+                'order_id' => $orderId,
+                'trx_id'   => $trxId,
+                'status'   => $verifyStatus,
+            ]);
+
+            // Step 2 — If verify returned pending, fall back to poll without reference
+            if ($verifyStatus === 'pending') {
+                $pollResponse = $this->apiClient->pollTransaction(
+                    $orderId,
+                    $expectedAmount,
+                    $expectedMethod,
+                    $trxId,
+                    null  // no reference
+                );
+
+                $pollStatus = $pollResponse['status'] ?? 'unknown';
+
+                if (in_array($pollStatus, ['verified', 'confirmed'])) {
+                    $verifyResponse = $pollResponse;
+                    $verifyStatus   = $pollStatus;
+                } elseif ($pollStatus === 'pending') {
+                    return VerificationResult::pending('Transaction is still pending. Please wait and try again.');
+                } else {
+                    return $this->processManualResponse($pollResponse, $expectedAmount, $expectedMethod, $orderId);
+                }
+            }
+
+            // Step 3 — If verified / confirmed, call confirm-transaction
+            if (in_array($verifyStatus, ['verified', 'confirmed'])) {
+                $resolvedReference = $this->resolveReferenceForConfirm($verifyResponse, null);
+
+                Log::info('[VendWeave] Manual TRX: calling confirm-transaction', [
+                    'order_id'  => $orderId,
+                    'trx_id'    => $trxId,
+                    'reference' => $resolvedReference,
+                ]);
+
+                $confirmResponse = $this->apiClient->confirmTransaction(
+                    $trxId,
+                    $resolvedReference,
+                    $orderId
+                );
+
+                // Enrich context
+                if (!isset($confirmResponse['trx_id']))    { $confirmResponse['trx_id']    = $trxId; }
+                if (!isset($confirmResponse['order_id']))  { $confirmResponse['order_id']  = $orderId; }
+
+                return $this->processManualResponse($confirmResponse, $expectedAmount, $expectedMethod, $orderId);
+            }
+
+            // All other statuses (failed, expired, used …)
+            return $this->processManualResponse($verifyResponse, $expectedAmount, $expectedMethod, $orderId);
+
+        } catch (ApiConnectionException $e) {
+            return VerificationResult::failed('API_ERROR', $e->getMessage());
+        }
+    }
+
+    /**
+     * Process API response for manual (reference-less) verification.
+     * Only validates: store, amount, payment method — no reference checks.
+     *
+     * @param array  $response
+     * @param float  $expectedAmount
+     * @param string $expectedMethod
+     * @param string $orderId
+     * @return VerificationResult
+     */
+    private function processManualResponse(
+        array $response,
+        float $expectedAmount,
+        string $expectedMethod,
+        string $orderId
+    ): VerificationResult {
+        $httpStatus = $response['_http_status'] ?? 200;
+
+        if ($httpStatus === 404) {
+            return VerificationResult::failed(
+                'TRANSACTION_NOT_FOUND',
+                'No matching transaction found for the provided Transaction ID.'
+            );
+        }
+
+        $status         = $response['status'] ?? 'unknown';
+        $trxId          = $response['trx_id'] ?? null;
+        $receivedAmount = (float) ($response['amount'] ?? 0);
+        $receivedMethod = strtolower($response['payment_method'] ?? '');
+        $receivedStore  = $response['store_slug'] ?? null;
+        $expectedStore  = $this->apiClient->getStoreSlug();
+
+        switch ($status) {
+            case 'pending':
+                return VerificationResult::pending('Transaction is still pending. Please wait and try again.');
+
+            case 'expired':
+                return VerificationResult::expired($trxId ?? 'unknown');
+
+            case 'used':
+                // If it belongs to THIS order, allow idempotent success
+                if ($receivedStore === $expectedStore || $expectedStore === null) {
+                    if ((string) ($response['order_id'] ?? '') === (string) $orderId) {
+                        return VerificationResult::confirmed(
+                            $trxId,
+                            $receivedAmount ?: $expectedAmount,
+                            $receivedMethod ?: $expectedMethod,
+                            $receivedStore ?? $expectedStore
+                        );
+                    }
+                }
+                return VerificationResult::alreadyUsed($trxId ?? 'unknown');
+
+            case 'failed':
+                return VerificationResult::failed(
+                    'TRANSACTION_FAILED',
+                    $response['message'] ?? 'Transaction verification failed.'
+                );
+
+            case 'confirmed':
+                // 1. Store check
+                if ($expectedStore !== null && $receivedStore !== null && $receivedStore !== $expectedStore) {
+                    Log::warning('[VendWeave] Manual TRX: store mismatch', [
+                        'expected' => $expectedStore,
+                        'received' => $receivedStore,
+                        'trx_id'   => $trxId,
+                    ]);
+                    return VerificationResult::failed(
+                        'STORE_MISMATCH',
+                        "Transaction belongs to a different store ({$receivedStore})."
+                    );
+                }
+
+                // 2. Amount check (strict — no tolerance)
+                if (!$this->amountsMatch($expectedAmount, $receivedAmount)) {
+                    Log::warning('[VendWeave] Manual TRX: amount mismatch', [
+                        'expected' => $expectedAmount,
+                        'received' => $receivedAmount,
+                        'trx_id'   => $trxId,
+                    ]);
+                    return VerificationResult::failed(
+                        'AMOUNT_MISMATCH',
+                        "Amount mismatch: expected {$expectedAmount}, received {$receivedAmount}."
+                    );
+                }
+
+                // 3. Payment method check
+                if (!empty($receivedMethod) && strtolower($expectedMethod) !== $receivedMethod) {
+                    Log::warning('[VendWeave] Manual TRX: payment method mismatch', [
+                        'expected' => $expectedMethod,
+                        'received' => $receivedMethod,
+                        'trx_id'   => $trxId,
+                    ]);
+                    return VerificationResult::failed(
+                        'METHOD_MISMATCH',
+                        "Payment method mismatch: expected {$expectedMethod}, received {$receivedMethod}."
+                    );
+                }
+
+                // 4. Financial record (if available)
+                if (class_exists(FinancialRecordManager::class) && FinancialRecordManager::isAvailable()) {
+                    FinancialRecordManager::createFromReference(
+                        $trxId ?? $orderId,
+                        $orderId,
+                        $receivedStore ?? $expectedStore,
+                        $expectedAmount,
+                        $receivedAmount,
+                        $receivedMethod ?: $expectedMethod,
+                        $trxId,
+                        array_merge($response, [
+                            'currency'      => $response['currency'] ?? config('vendweave.base_currency', 'USD'),
+                            'base_currency' => config('vendweave.base_currency', 'USD'),
+                            'manual_verify' => true,
+                        ])
+                    );
+                }
+
+                Log::info('[VendWeave] Manual TRX verification successful', [
+                    'order_id' => $orderId,
+                    'trx_id'   => $trxId,
+                    'amount'   => $receivedAmount,
+                    'method'   => $receivedMethod,
+                ]);
+
+                return VerificationResult::confirmed(
+                    $trxId,
+                    $receivedAmount,
+                    $receivedMethod ?: $expectedMethod,
+                    $receivedStore ?? $expectedStore,
+                    'skipped'   // reference_status: skipped for manual mode
+                );
+
+            default:
+                Log::warning('[VendWeave] Manual TRX: unrecognized status', [
+                    'status'   => $status,
+                    'order_id' => $orderId,
+                ]);
+                return VerificationResult::pending('Transaction status is unknown. Please try again.');
+        }
+    }
+
+    /**
      * Reserve a payment reference with POS (optional, safe).
      *
      * @param string $orderId
