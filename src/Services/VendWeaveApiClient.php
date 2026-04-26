@@ -300,6 +300,48 @@ class VendWeaveApiClient
     }
 
     /**
+     * Cancel a pending payment reservation immediately.
+     *
+     * Call this when the customer clicks "Cancel" on the payment page so the
+     * POS DB record is marked FAILED right away instead of waiting up to 10 minutes
+     * for the server-side auto-expiry.
+     *
+     * @param string      $reference  Payment reference (e.g. VW1234)
+     * @param string|null $orderId    Order ID for context logging
+     * @param string|null $reason     Human-readable cancellation reason
+     * @return array Raw API response data
+     * @throws ApiConnectionException
+     * @throws InvalidCredentialsException
+     */
+    public function cancelReservation(string $reference, ?string $orderId = null, ?string $reason = null): array
+    {
+        $this->validateCredentials();
+
+        $params = $this->normalizeApiPayload([
+            'reference' => $reference,
+        ]);
+
+        if ($orderId !== null) {
+            $params['order_id'] = $orderId;
+        }
+
+        if ($reason !== null) {
+            $params['reason'] = $reason;
+        }
+
+        $this->log('info', 'Cancel Reservation', [
+            'endpoint'   => '/api/sdk/laravel/cancel',
+            'reference'  => $reference,
+            'order_id'   => $orderId,
+            'store_slug' => $this->storeSlug,
+        ]);
+
+        $response = $this->request('POST', '/api/sdk/laravel/cancel', $params);
+
+        return $this->normalizeResponse($response);
+    }
+
+    /**
      * Get the configured store slug.
      */
     public function getStoreSlug(): ?string
