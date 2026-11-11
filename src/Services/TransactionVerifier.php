@@ -992,9 +992,16 @@ class TransactionVerifier
     private function shouldAttemptReferenceFallback(array $response): bool
     {
         $errorCode = strtoupper((string) ($response['error_code'] ?? ''));
+        $status = strtolower((string) ($response['status'] ?? ''));
         $referenceStatus = strtolower((string) ($response['reference_status'] ?? ''));
+        $message = strtolower((string) ($response['error_message'] ?? $response['message'] ?? ''));
 
         return in_array($errorCode, ['REFERENCE_MISMATCH', 'REFERENCE_MISSING'], true)
-            || in_array($referenceStatus, ['mismatched', 'missing'], true);
+            || in_array($status, ['reference_mismatch', 'reference_missing'], true)
+            || in_array($referenceStatus, ['mismatched', 'missing'], true)
+            // Older POS versions return a generic failed status without an
+            // error_code. Only recognise the explicit reference-only error;
+            // amount, gateway and order mismatches must never fall back.
+            || ($status === 'failed' && preg_match('/payment reference.*(?:does not match|missing)/', $message) === 1);
     }
 }

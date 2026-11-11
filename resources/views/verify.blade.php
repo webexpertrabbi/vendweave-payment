@@ -660,6 +660,19 @@
                     case 'expired':
                         handleError('EXPIRED', 'Transaction has expired');
                         break;
+                    case 'reference_mismatch':
+                    case 'reference_missing':
+                    case 'method_mismatch':
+                    case 'amount_mismatch':
+                    case 'amount_unavailable':
+                    case 'payment_not_received':
+                    case 'order_mismatch':
+                    case 'invalid_state':
+                        // These are terminal validation results from the POS.
+                        // Do not keep polling a payment that cannot safely be
+                        // applied to this order.
+                        handleError(data.error_code || data.status.toUpperCase(), data.error_message || data.message || 'Payment could not be verified.');
+                        break;
                     default:
                         updateStatus('pending', 'Waiting for payment...');
                         scheduleNextPoll(config.pollingInterval);

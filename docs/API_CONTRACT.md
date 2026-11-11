@@ -107,6 +107,9 @@ Behavior:
 
 - SDK first tries provided reference (if any).
 - On reference mismatch/missing error with trx_id present, SDK retries verify without reference.
+- The POS accepts that fallback only for the current store, order, selected
+  gateway and exact expected amount. A live reference belonging to another
+  payment window is never reassigned.
 - Confirm step uses resolved reference returned by POS (if present).
 
 ---
@@ -137,6 +140,10 @@ Behavior:
 | `used`      | Transaction consumed/locked ✅                 | **Redirect success** |
 | `failed`    | Transaction failed                             | **Redirect failed** |
 | `expired`   | Transaction has expired                        | **Redirect failed** |
+| `reference_mismatch` | Reference belongs to another live window | Show error; do not poll |
+| `method_mismatch` | Gateway differs from the selected method | Show error; do not poll |
+| `amount_mismatch` | Received amount differs from expected amount | Show error; do not poll |
+| `payment_not_received` | Reservation placeholder was submitted as a TrxID | Show error; do not poll |
 
 ---
 
