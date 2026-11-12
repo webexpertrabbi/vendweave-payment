@@ -4,7 +4,11 @@ namespace VendWeave\Gateway\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as BaseController;
+use Illuminate\Support\Facades\Log;
 use VendWeave\Gateway\Services\PaymentManager;
+use VendWeave\Gateway\Services\ReferenceGovernor;
+use VendWeave\Gateway\Services\VendWeaveApiClient;
+use VendWeave\Gateway\VendWeaveHelper;
 
 /**
  * Controller for verification page and result pages.
@@ -52,7 +56,7 @@ class VerifyController extends BaseController
         $pollingMismatch = false;
 
         try {
-            $client = app(\VendWeave\Gateway\Services\VendWeaveApiClient::class);
+            $client = app(VendWeaveApiClient::class);
             $posPolling = $client->getPollingLimits();
 
             if (is_array($posPolling)) {
@@ -83,15 +87,73 @@ class VerifyController extends BaseController
             $pollingMismatch = false;
         }
 
-        // Initialize or retrieve start time for persistent timer
         $timerSessionKey = "vendweave_timer_{$order}";
+        $reservedSessionKey = "vendweave_reserved_{$order}";
+        $timeoutDuration = (int) ($effectivePolling['timeout_seconds'] ?? $localPolling['timeout_seconds']);
+
+        if ($request->boolean('retry')) {
+            session()->forget([$timerSessionKey, $reservedSessionKey]);
+            unset($orderData['reference']);
+        } elseif (session()->has($timerSessionKey)) {
+            $previousElapsed = now()->diffInSeconds(session($timerSessionKey), true);
+            if ($previousElapsed >= $timeoutDuration) {
+                // Previous window expired: force a fresh reservation on revisit
+                session()->forget([$timerSessionKey, $reservedSessionKey]);
+                unset($orderData['reference']);
+            }
+        }
+
+        // Ensure an active POS reservation exists whenever the payment window opens
+        if (empty($orderData['reference']) || !session()->has($reservedSessionKey)) {
+            $storeSlug = (string) config('vendweave.store_slug', 'default');
+            $reference = !empty($orderData['reference'])
+                ? (string) $orderData['reference']
+                : VendWeaveHelper::generateReference($storeSlug);
+
+            try {
+                for ($attempt = 0; $attempt < 5; $attempt++) {
+                    $reserveResponse = $this->paymentManager->reserveReference(
+                        $order,
+                        (float) $orderData['amount'],
+                        (string) $orderData['payment_method'],
+                        $reference
+                    );
+
+                    $httpStatus = (int) ($reserveResponse['_http_status'] ?? 0);
+                    $rawStatus = (string) ($reserveResponse['raw_status'] ?? ($reserveResponse['status'] ?? ''));
+
+                    if (($httpStatus === 200 || $httpStatus === 201) && !empty($reserveResponse['reference'])) {
+                        $reference = (string) $reserveResponse['reference'];
+                        session([$reservedSessionKey => time()]);
+                        break;
+                    }
+
+                    if ($httpStatus === 409 || $rawStatus === 'reference_conflict') {
+                        $reference = VendWeaveHelper::generateReference($storeSlug);
+                        continue;
+                    }
+
+                    break;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[VendWeave] Failed to ensure reservation on verify show', [
+                    'order_id' => $order,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            $orderData['reference'] = $reference;
+            ReferenceGovernor::reserve($storeSlug, $order, $reference, (int) config('vendweave.reference_ttl', 30));
+            session(["vendweave_order_{$order}" => $orderData]);
+        }
+
+        // Initialize or retrieve start time for persistent timer
         if (!session()->has($timerSessionKey)) {
-             session([$timerSessionKey => now()]);
+            session([$timerSessionKey => now()]);
         }
 
         $startTime = session($timerSessionKey);
-        $timeoutDuration = (int) ($effectivePolling['timeout_seconds'] ?? $localPolling['timeout_seconds']);
-        $elapsed = now()->diffInSeconds($startTime);
+        $elapsed = now()->diffInSeconds($startTime, true);
         $timeRemaining = max(0, $timeoutDuration - $elapsed);
 
         return view('vendweave::verify', [
@@ -168,11 +230,44 @@ class VerifyController extends BaseController
      */
     public function cancelled(Request $request, string $order)
     {
+        $orderData = session("vendweave_order_{$order}");
+        $reason = (string) $request->query('reason', 'user_cancelled');
+        $message = (string) $request->query(
+            'message',
+            $reason === 'timeout'
+                ? 'Payment verification timed out. Please retry with a fresh reference.'
+                : 'Payment was cancelled. You can retry or choose another payment method.'
+        );
+
+        if (is_array($orderData) && !empty($orderData['reference'])) {
+            try {
+                app(VendWeaveApiClient::class)->cancelReservation(
+                    (string) $orderData['reference'],
+                    $order,
+                    $reason
+                );
+            } catch (\Throwable $e) {
+                Log::warning('[VendWeave] Failed to cancel POS reservation on cancel/timeout', [
+                    'order_id' => $order,
+                    'reference' => $orderData['reference'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        VendWeaveHelper::clearOrderData($order, true);
+
+        $retryParams = ['order' => $order, 'retry' => 1];
+        if (is_array($orderData) && isset($orderData['amount'], $orderData['payment_method'])) {
+            $retryParams['amount'] = $orderData['amount'];
+            $retryParams['payment_method'] = $orderData['payment_method'];
+        }
+
         return view('vendweave::error', [
             'orderId' => $order,
-            'errorCode' => 'CANCELLED',
-            'errorMessage' => 'Payment was cancelled. You can retry or choose another payment method.',
-            'retryUrl' => route('vendweave.verify', ['order' => $order]),
+            'errorCode' => $reason === 'timeout' ? 'TIMEOUT' : 'CANCELLED',
+            'errorMessage' => $message,
+            'retryUrl' => route('vendweave.verify', $retryParams),
             'isCancelled' => true,
         ]);
     }

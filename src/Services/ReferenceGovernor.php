@@ -54,10 +54,20 @@ class ReferenceGovernor
             : now()->addMinutes($ttlOrExpiresAt ?? self::ttlMinutes());
 
         try {
-            $existing = DB::table(self::TABLE)->where('reference', $reference)->first();
+            $existing = DB::table(self::TABLE)
+                ->where('reference', $reference)
+                ->where('status', self::STATUS_RESERVED)
+                ->first();
             if ($existing) {
                 return (array) $existing;
             }
+
+            // Clean up any stale non-reserved row reusing this 4-digit reference
+            // so unique index constraints never silently block a fresh reservation.
+            DB::table(self::TABLE)
+                ->where('reference', $reference)
+                ->where('status', '!=', self::STATUS_RESERVED)
+                ->delete();
 
             DB::table(self::TABLE)->insert([
                 'reference' => $reference,
