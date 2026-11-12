@@ -485,7 +485,7 @@
             </div>
             
             <!-- Timer -->
-            <div class="timer">Time remaining: <strong id="timer-value">5:00</strong></div>
+            <div class="timer">Time remaining: <strong id="timer-value">10:00</strong></div>
         </div>
         
         <p class="footer">Powered by <a href="https://vendweave.com/" target="_blank" rel="noopener">VendWeave</a></p>
@@ -611,6 +611,11 @@
                         return;
                     }
 
+                    if (response.status === 429) {
+                        const retryMs = Math.max(((data.retry_after || 10) * 1000), config.pollingInterval * 2);
+                        scheduleNextPoll(retryMs);
+                        return;
+                    }
                     if (!response.ok && (!data.status || typeof data.status !== 'string')) {
                         showError('Connection error. Retrying...');
                         scheduleNextPoll(config.pollingInterval);
@@ -632,9 +637,12 @@
 
                 switch (data.status) {
                     case 'confirmed':
-                    case 'used':
                     case 'success':
                         handleSuccess(data);
+                        break;
+                    case 'used':
+                    case 'already_used':
+                        handleError(data.error_code || 'ALREADY_USED', data.error_message || data.message || 'This transaction has already been used for another order.');
                         break;
                     case 'verified':
                         updateStatus('pending', data.message || 'Confirming transaction...');
@@ -681,6 +689,7 @@
             }
             
             function handleSuccess(data) {
+                hideError();
                 stopPolling();
                 updateStatus('confirmed', 'Payment Verified!');
                 verifyBtn.disabled = true;
@@ -692,8 +701,10 @@
                 stopPolling();
                 updateStatus('failed', 'Verification Failed');
                 showError(message);
+                verifyBtn.dataset.state = 'retry';
                 verifyBtn.textContent = 'Retry';
                 verifyBtn.disabled = false;
+                trxInput.disabled = false;
             }
             
             function handleTimeout() {
@@ -809,8 +820,7 @@
                     const status = data.status ?? 'failed';
 
                     if (status === 'confirmed' || status === 'success') {
-                        updateStatus('confirmed', 'Payment Verified!');
-                        setTimeout(() => { if (data.redirect_url) window.location.href = data.redirect_url; }, 1200);
+                        handleSuccess(data);
                         return;
                     }
 

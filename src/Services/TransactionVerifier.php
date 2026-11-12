@@ -82,22 +82,14 @@ class TransactionVerifier
 
                 $resolvedReferenceForConfirm = $this->resolveReferenceForConfirm($response, $expectedReference);
 
-                $confirmResponse = $this->apiClient->confirmTransaction(
+                $confirmResponse = $this->confirmAndEnrich(
                     $resolvedTrxId,
                     $resolvedReferenceForConfirm,
-                    $orderId
+                    $orderId,
+                    $expectedAmount,
+                    $expectedMethod,
+                    $response
                 );
-
-                // Enrich response to preserve context for finalization
-                if (!isset($confirmResponse['trx_id'])) {
-                    $confirmResponse['trx_id'] = $resolvedTrxId;
-                }
-                if (!isset($confirmResponse['reference']) && $resolvedReferenceForConfirm !== null) {
-                    $confirmResponse['reference'] = $resolvedReferenceForConfirm;
-                }
-                if (!isset($confirmResponse['order_id'])) {
-                    $confirmResponse['order_id'] = $orderId;
-                }
 
                 return $this->processResponse(
                     $confirmResponse,
@@ -151,22 +143,14 @@ class TransactionVerifier
                         'trx_id' => $resolvedTrxId,
                         'previous_status' => $verifyResponse['raw_status'] ?? $verifyResponse['status'] ?? null,
                     ]);
-                    $confirmResponse = $this->apiClient->confirmTransaction(
+                    $confirmResponse = $this->confirmAndEnrich(
                         $resolvedTrxId,
                         $resolvedReferenceForConfirm,
-                        $orderId
+                        $orderId,
+                        $expectedAmount,
+                        $expectedMethod,
+                        $verifyResponse
                     );
-
-                    // Enrich response to preserve context for finalization
-                    if (!isset($confirmResponse['trx_id'])) {
-                        $confirmResponse['trx_id'] = $resolvedTrxId;
-                    }
-                    if (!isset($confirmResponse['reference']) && $resolvedReferenceForConfirm !== null) {
-                        $confirmResponse['reference'] = $resolvedReferenceForConfirm;
-                    }
-                    if (!isset($confirmResponse['order_id'])) {
-                        $confirmResponse['order_id'] = $orderId;
-                    }
 
                     return $this->processResponse(
                         $confirmResponse,
@@ -206,21 +190,14 @@ class TransactionVerifier
                 $verifyStatus = $verifyResponse['status'] ?? null;
                 if (in_array($verifyStatus, ['verified', 'confirmed'])) {
                     $resolvedReferenceForConfirm = $this->resolveReferenceForConfirm($verifyResponse, null);
-                    $confirmResponse = $this->apiClient->confirmTransaction(
+                    $confirmResponse = $this->confirmAndEnrich(
                         $resolvedTrxId,
                         $resolvedReferenceForConfirm,
-                        $orderId
+                        $orderId,
+                        $expectedAmount,
+                        $expectedMethod,
+                        $verifyResponse
                     );
-
-                    if (!isset($confirmResponse['trx_id'])) {
-                        $confirmResponse['trx_id'] = $resolvedTrxId;
-                    }
-                    if (!isset($confirmResponse['reference']) && $resolvedReferenceForConfirm !== null) {
-                        $confirmResponse['reference'] = $resolvedReferenceForConfirm;
-                    }
-                    if (!isset($confirmResponse['order_id'])) {
-                        $confirmResponse['order_id'] = $orderId;
-                    }
 
                     return $this->processResponse(
                         $confirmResponse,
@@ -353,15 +330,14 @@ class TransactionVerifier
                     'reference' => $resolvedReference,
                 ]);
 
-                $confirmResponse = $this->apiClient->confirmTransaction(
+                $confirmResponse = $this->confirmAndEnrich(
                     $trxId,
                     $resolvedReference,
-                    $orderId
+                    $orderId,
+                    $expectedAmount,
+                    $expectedMethod,
+                    $verifyResponse
                 );
-
-                // Enrich context
-                if (!isset($confirmResponse['trx_id']))    { $confirmResponse['trx_id']    = $trxId; }
-                if (!isset($confirmResponse['order_id']))  { $confirmResponse['order_id']  = $orderId; }
 
                 return $this->processManualResponse($confirmResponse, $expectedAmount, $expectedMethod, $orderId);
             }
@@ -414,9 +390,23 @@ class TransactionVerifier
                 return VerificationResult::expired($trxId ?? 'unknown');
 
             case 'used':
-                // If it belongs to THIS order, allow idempotent success
+                // If it belongs to THIS order, allow idempotent success after verifying amount & method
                 if ($receivedStore === $expectedStore || $expectedStore === null) {
                     if ((string) ($response['order_id'] ?? '') === (string) $orderId) {
+                        if ($receivedAmount > 0 && !$this->amountsMatch($expectedAmount, $receivedAmount)) {
+                            return VerificationResult::failed(
+                                'AMOUNT_MISMATCH',
+                                "Amount mismatch: expected {$expectedAmount}, received {$receivedAmount}."
+                            );
+                        }
+
+                        if (!empty($receivedMethod) && strtolower($expectedMethod) !== $receivedMethod) {
+                            return VerificationResult::failed(
+                                'METHOD_MISMATCH',
+                                "Payment method mismatch: expected {$expectedMethod}, received {$receivedMethod}."
+                            );
+                        }
+
                         return VerificationResult::confirmed(
                             $trxId,
                             $receivedAmount ?: $expectedAmount,
@@ -507,6 +497,11 @@ class TransactionVerifier
                 );
 
             default:
+                $explicitError = $this->mapPosErrorStatus($status, $response);
+                if ($explicitError !== null) {
+                    return $explicitError;
+                }
+
                 Log::warning('[VendWeave] Manual TRX: unrecognized status', [
                     'status'   => $status,
                     'order_id' => $orderId,
@@ -579,6 +574,23 @@ class TransactionVerifier
 
             case 'used':
                 if ($this->isUsedForCurrentOrder($response, $orderId, $expectedReference)) {
+                    $receivedAmount = (float) ($response['amount'] ?? 0);
+                    $receivedMethod = strtolower((string) ($response['payment_method'] ?? ''));
+
+                    if ($receivedAmount > 0 && !$this->amountsMatch($expectedAmount, $receivedAmount)) {
+                        return VerificationResult::failed(
+                            'AMOUNT_MISMATCH',
+                            "Amount mismatch: expected {$expectedAmount}, received {$receivedAmount}"
+                        );
+                    }
+
+                    if ($receivedMethod !== '' && strtolower($expectedMethod) !== $receivedMethod) {
+                        return VerificationResult::failed(
+                            'METHOD_MISMATCH',
+                            "Payment method mismatch: expected {$expectedMethod}, received {$receivedMethod}"
+                        );
+                    }
+
                     // Payment already confirmed for THIS order - return success directly
                     // Skip governance checks - this is an idempotent retry (page refresh, etc.)
                     Log::info('[VendWeave] Used status matched current order - returning confirmed (idempotent)', [
@@ -623,6 +635,11 @@ class TransactionVerifier
                 );
 
             default:
+                $explicitError = $this->mapPosErrorStatus($status, $response);
+                if ($explicitError !== null) {
+                    return $explicitError;
+                }
+
                 // Graceful fallback: treat any unrecognized status as pending
                 // SDK should never throw "unknown status" to clients
                 Log::warning('[VendWeave] Unrecognized status in TransactionVerifier, treating as pending', [
@@ -937,18 +954,27 @@ class TransactionVerifier
      */
     private function isUsedForCurrentOrder(array $response, string $orderId, ?string $expectedReference): bool
     {
+        $receivedStore = $response['store_slug'] ?? null;
+        $expectedStore = $this->apiClient->getStoreSlug();
+        if ($expectedStore !== null && $receivedStore !== null && $receivedStore !== $expectedStore) {
+            return false;
+        }
+
         $receivedOrderId = $response['order_id'] ?? null;
-        $receivedReference = $response['reference'] ?? null;
+        $receivedReference = $response['reference'] ?? ($response['payment_reference'] ?? null);
+
+        if ($receivedOrderId !== null && (string) $receivedOrderId !== (string) $orderId) {
+            return false;
+        }
 
         if ($expectedReference !== null && $receivedReference !== null) {
-            return $receivedReference === $expectedReference;
+            if (strtoupper(trim((string) $receivedReference)) !== strtoupper(trim((string) $expectedReference))) {
+                return false;
+            }
+            return true;
         }
 
-        if ($receivedOrderId !== null) {
-            return (string) $receivedOrderId === (string) $orderId;
-        }
-
-        return false;
+        return $receivedOrderId !== null && (string) $receivedOrderId === (string) $orderId;
     }
 
     /**
@@ -1003,5 +1029,73 @@ class TransactionVerifier
             // error_code. Only recognise the explicit reference-only error;
             // amount, gateway and order mismatches must never fall back.
             || ($status === 'failed' && preg_match('/payment reference.*(?:does not match|missing)/', $message) === 1);
+    }
+
+    /**
+     * Confirm a verified transaction with POS and preserve context fields if omitted.
+     */
+    private function confirmAndEnrich(
+        string $trxId,
+        ?string $reference,
+        string $orderId,
+        float $expectedAmount,
+        string $expectedMethod,
+        array $sourceResponse = []
+    ): array {
+        $confirmResponse = $this->apiClient->confirmTransaction(
+            $trxId,
+            $reference,
+            $orderId,
+            $expectedMethod,
+            $expectedAmount
+        );
+
+        if (empty($confirmResponse['trx_id'])) {
+            $confirmResponse['trx_id'] = $trxId;
+        }
+        if (empty($confirmResponse['order_id'])) {
+            $confirmResponse['order_id'] = $sourceResponse['order_id'] ?? $orderId;
+        }
+        if (empty($confirmResponse['reference']) && $reference !== null) {
+            $confirmResponse['reference'] = $reference;
+        }
+        foreach (['amount', 'payment_method', 'store_slug', 'currency', 'sender_number', 'payment_reference'] as $field) {
+            if ((!isset($confirmResponse[$field]) || $confirmResponse[$field] === '' || $confirmResponse[$field] === null)
+                && isset($sourceResponse[$field]) && $sourceResponse[$field] !== '' && $sourceResponse[$field] !== null
+            ) {
+                $confirmResponse[$field] = $sourceResponse[$field];
+            }
+        }
+
+        return $confirmResponse;
+    }
+
+    /**
+     * Map explicit POS validation/error statuses to terminal VerificationResult failures.
+     */
+    private function mapPosErrorStatus(string $status, array $response): ?VerificationResult
+    {
+        $map = [
+            'method_mismatch' => ['METHOD_MISMATCH', 'Payment method does not match this order.'],
+            'amount_mismatch' => ['AMOUNT_MISMATCH', 'Payment amount does not match this order.'],
+            'amount_unavailable' => ['AMOUNT_UNAVAILABLE', 'Expected amount is unavailable for this transaction.'],
+            'order_mismatch' => ['ORDER_MISMATCH', 'Transaction belongs to a different order.'],
+            'reference_mismatch' => ['REFERENCE_MISMATCH', 'Payment reference does not match.'],
+            'invalid_reference' => ['INVALID_REFERENCE', 'Invalid payment reference.'],
+            'reference_conflict' => ['REFERENCE_CONFLICT', 'Payment reference conflicts with an existing reservation.'],
+            'payment_not_received' => ['PAYMENT_NOT_RECEIVED', 'Payment has not been received yet for this Transaction ID.'],
+            'invalid_state' => ['INVALID_STATE', 'Transaction is not in a verifiable state.'],
+        ];
+
+        if (!isset($map[$status])) {
+            return null;
+        }
+
+        [$code, $defaultMessage] = $map[$status];
+
+        return VerificationResult::failed(
+            $code,
+            $response['message'] ?? $response['error_message'] ?? $defaultMessage
+        );
     }
 }

@@ -121,22 +121,7 @@ class VendWeaveApiClient
         // DEBUG LOGGING END
 
         // Normalize response structure (List → Object, auto-detect fields)
-        $normalized = $this->normalizeResponse($response);
-        
-        // Inject payment_method if API didn't return it
-        if (empty($normalized['payment_method'])) {
-            $this->log('warning', 'API response missing payment_method, injecting expected value', [
-                'expected_payment_method' => $paymentMethod,
-                'normalized_before' => $normalized
-            ]);
-            $normalized['payment_method'] = $paymentMethod;
-        } else {
-             $this->log('info', 'Payment method found in API response', [
-                'method' => $normalized['payment_method']
-            ]);
-        }
-        
-        return $normalized;
+        return $this->normalizeResponse($response);
     }
 
     /**
@@ -188,17 +173,7 @@ class VendWeaveApiClient
         $response = $this->request('POST', '/api/sdk/laravel/verify', $params);
         
         // Normalize response structure (List → Object, auto-detect fields)
-        $normalized = $this->normalizeResponse($response);
-        
-        // Inject payment_method if API didn't return it
-        if (empty($normalized['payment_method'])) {
-            $this->log('warning', 'API response missing payment_method, injecting expected value', [
-                'expected_payment_method' => $paymentMethod,
-            ]);
-            $normalized['payment_method'] = $paymentMethod;
-        }
-        
-        return $normalized;
+        return $this->normalizeResponse($response);
     }
 
     /**
@@ -208,12 +183,19 @@ class VendWeaveApiClient
      * @param string $trxId
      * @param string|null $reference Payment reference for matching
      * @param string|null $orderId Order ID for context
+     * @param string|null $paymentMethod Payment method for validation
+     * @param float|null $expectedAmount Expected amount for validation
      * @return array Raw API response data
      * @throws ApiConnectionException
      * @throws InvalidCredentialsException
      */
-    public function confirmTransaction(string $trxId, ?string $reference = null, ?string $orderId = null): array
-    {
+    public function confirmTransaction(
+        string $trxId,
+        ?string $reference = null,
+        ?string $orderId = null,
+        ?string $paymentMethod = null,
+        ?float $expectedAmount = null
+    ): array {
         $this->validateCredentials();
 
         $params = $this->normalizeApiPayload([
@@ -227,6 +209,14 @@ class VendWeaveApiClient
 
         if ($orderId !== null) {
             $params['order_id'] = $orderId;
+        }
+
+        if ($paymentMethod !== null) {
+            $params['payment_method'] = $paymentMethod;
+        }
+
+        if ($expectedAmount !== null) {
+            $params['expected_amount'] = $expectedAmount;
         }
 
         $this->log('info', 'Confirm Transaction', [
@@ -379,7 +369,12 @@ class VendWeaveApiClient
         ]);
 
         try {
-            $response = $this->client->request($method, $path, $options);
+            $baseRoot = preg_replace('#/api(/v\d+)?$#i', '', $this->endpoint);
+            $requestUrl = str_starts_with($path, 'http')
+                ? $path
+                : $baseRoot . '/' . ltrim($path, '/');
+
+            $response = $this->client->request($method, $requestUrl, $options);
             $statusCode = $response->getStatusCode();
             $body = $response->getBody()->getContents();
             $data = json_decode($body, true) ?? [];
@@ -702,6 +697,17 @@ class VendWeaveApiClient
             'replayed'   => 'used',
             'duplicate'  => 'used',
             'already_used' => 'used',
+
+            // Terminal validation mismatches from POS (must NEVER collapse to pending)
+            'method_mismatch'      => 'method_mismatch',
+            'amount_mismatch'      => 'amount_mismatch',
+            'amount_unavailable'   => 'amount_unavailable',
+            'order_mismatch'       => 'order_mismatch',
+            'reference_mismatch'   => 'reference_mismatch',
+            'payment_not_received' => 'payment_not_received',
+            'invalid_state'        => 'invalid_state',
+            'invalid_reference'    => 'invalid_reference',
+            'reference_conflict'   => 'reference_conflict',
 
             // Failed variants
             'failed'     => 'failed',
